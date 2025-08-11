@@ -1,6 +1,7 @@
-/* Netlify Function – finalize with verbose errors & size guard
-   - POST JSON: { imageUrl (dataURL <= ~800KB), linkUrl, blocks[] }
-   - Anti-double purchase; one image over selection (rect bbox)
+/* Netlify Function – finalize (explicit Blobs config via env SITE_ID + TOKEN)
+   Requires Netlify env vars:
+     - SITE_ID:   your Project ID (Site settings → Project information → Project ID)
+     - BLOBS_TOKEN or NETLIFY_AUTH_TOKEN: a Personal Access Token with blobs access
 */
 const { getStore } = require('@netlify/blobs');
 const STORE = 'pixelwall';
@@ -24,6 +25,16 @@ function bbox(blocks) {
   return { x:minC, y:minR, w:(maxC-minC+1), h:(maxR-minR+1) };
 }
 
+function getConfiguredStore() {
+  const siteID = process.env.SITE_ID || process.env.NETLIFY_SITE_ID;
+  const token  = process.env.BLOBS_TOKEN || process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+  if (!siteID || !token) {
+    const msg = 'Missing env SITE_ID and/or BLOBS_TOKEN (or NETLIFY_AUTH_TOKEN). Set them in Netlify → Site settings → Build & deploy → Environment.';
+    throw new Error(msg);
+  }
+  return getStore(STORE, { siteID, token });
+}
+
 exports.handler = async (event) => {
   try {
     const method = String(event.httpMethod || '').toUpperCase();
@@ -32,24 +43,15 @@ exports.handler = async (event) => {
 
     let body = {};
     if (isJsonCT(event.headers)) { try { body = JSON.parse(event.body || '{}'); } catch (e) { return res(400, { ok:false, error:'BAD_JSON', message: String(e) }); } }
-    else {
-      const txt = event.body || '';
-      try { body = JSON.parse(txt); } catch { const params = new URLSearchParams(txt); body = Object.fromEntries(params.entries()); }
-    }
+    else { const txt = event.body || ''; try { body = JSON.parse(txt); } catch { const params = new URLSearchParams(txt); body = Object.fromEntries(params.entries()); } }
 
     const imageUrl = (body.imageUrl || '').toString();
-    const linkUrl = (body.linkUrl || '').toString();
-    const blocks = uniqInts(body.blocks || []);
-
+    const linkUrl  = (body.linkUrl  || '').toString();
+    const blocks   = uniqInts(body.blocks || []);
     if (!imageUrl || !linkUrl || !blocks.length) return res(400, { ok:false, error:'MISSING_FIELDS' });
 
-    // Size guard (approx bytes from dataURL length)
-    const approxBytes = Math.round(imageUrl.length * 0.75);
-    if (approxBytes > 900 * 1024) return res(413, { ok:false, error:'IMAGE_TOO_LARGE', approxBytes });
-
     let store;
-    try { store = getStore(STORE, { consistency: 'strong' }); }
-    catch (e) { return res(500, { ok:false, error:'BLOBS_NOT_AVAILABLE', message: String(e) }); }
+    try { store = getConfiguredStore(); } catch (e) { return res(500, { ok:false, error:'BLOBS_NOT_AVAILABLE', message: String(e) }); }
 
     // Load state
     let state;
