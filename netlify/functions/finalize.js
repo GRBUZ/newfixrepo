@@ -1,7 +1,6 @@
-/* Netlify Function – finalize (simple, anti-double purchase, one image across selection)
-   - Method: POST (JSON)
-   - Body: { imageUrl: dataURL, linkUrl: string, blocks: number[] }
-   - Persists to @netlify/blobs store: 'pixelwall' / key 'state'
+/* Netlify Function – finalize (ANY-METHOD hotfix with _method override)
+   TEMPORARY: accepts GET/HEAD weirdness by honoring ?_method=POST or body._method="POST".
+   Keeps anti-double purchase and single-image-across-selection behavior.
 */
 const { getStore } = require('@netlify/blobs');
 const STORE = 'pixelwall';
@@ -17,13 +16,7 @@ function headers() {
 }
 function res(statusCode, obj){ return { statusCode, headers: headers(), body: JSON.stringify(obj) }; }
 function isJsonCT(h){ const ct = h && (h['content-type'] || h['Content-Type'] || ''); return /application\/json/i.test(ct); }
-
-function uniqInts(list){
-  const out=[]; const seen=new Set();
-  (Array.isArray(list)?list:[]).forEach(v=>{ const n=Number(v); if(Number.isInteger(n)&&n>=0&&n<10000&&!seen.has(n)){ seen.add(n); out.push(n); } });
-  return out;
-}
-
+function uniqInts(list){ const out=[]; const seen=new Set(); (Array.isArray(list)?list:[]).forEach(v=>{ const n=Number(v); if(Number.isInteger(n)&&n>=0&&n<10000&&!seen.has(n)){ seen.add(n); out.push(n); } }); return out; }
 function bbox(blocks) {
   let minR=1e9, minC=1e9, maxR=-1, maxC=-1;
   for (const b of blocks) {
@@ -39,10 +32,13 @@ function bbox(blocks) {
 
 exports.handler = async (event) => {
   try {
-    const method = String(event.httpMethod || '').toUpperCase();
+    // Detect/override method
+    let method = String(event.httpMethod || (event.requestContext && event.requestContext.http && event.requestContext.http.method) || '').toUpperCase();
+    const qs = event.queryStringParameters || {};
+    if (qs && typeof qs._method === 'string' && qs._method.toUpperCase() === 'POST') method = 'POST';
     if (method === 'OPTIONS') return res(204, {});
-    if (method !== 'POST') return res(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
 
+    // Parse body (JSON or form) + body override
     let body = {};
     if (isJsonCT(event.headers)) {
       try { body = JSON.parse(event.body || '{}'); } catch { body = {}; }
@@ -51,6 +47,14 @@ exports.handler = async (event) => {
       try { body = JSON.parse(txt); } catch {
         const params = new URLSearchParams(txt);
         body = Object.fromEntries(params.entries());
+      }
+    }
+    if (body && typeof body._method === 'string' && body._method.toUpperCase() === 'POST') method = 'POST';
+
+    // If still not POST but we have the required fields, proceed anyway (hotfix)
+    if (method !== 'POST') {
+      if (!(body && body.imageUrl && body.linkUrl && (Array.isArray(body.blocks) && body.blocks.length))) {
+        return res(405, { ok:false, error:'METHOD_NOT_ALLOWED', hint:'Use POST or add ?_method=POST' });
       }
     }
 
