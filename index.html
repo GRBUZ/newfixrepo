@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Influencers Wall — Minimal</title>
-  <link rel="stylesheet" href="css/style.css?v=1" />
+  <link rel="stylesheet" href="css/style.css?v=2" />
 </head>
 <body>
   <header class="topbar">
@@ -40,6 +40,7 @@
         <label>Upload image
           <input id="file" type="file" accept="image/*" required />
         </label>
+        <div class="hint">We auto-optimize your image to keep it fast.</div>
         <div class="footer">
           <button type="button" class="btn" data-close>Cancel (Esc)</button>
           <button type="submit" id="confirm" class="btn primary">Confirm</button>
@@ -53,6 +54,6 @@
   </footer>
 
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
-  <script src="js/app.js?v=1"></script>
+  <script src="js/app.js?v=2"></script>
 </body>
 </html>

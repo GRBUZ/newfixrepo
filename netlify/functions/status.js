@@ -20,9 +20,13 @@ exports.handler = async (event) => {
     if (method === 'OPTIONS') return res(204, {});
     if (method !== 'GET') return res(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
 
-    const { getStore } = require('@netlify/blobs');
-    const store = getStore(STORE, { consistency: 'strong' });
-    const state = (await store.get(STATE_KEY, { type: 'json' })) || { artCells: {} };
+    let store;
+    try { store = getStore(STORE, { consistency: 'strong' }); }
+    catch (e) { return res(500, { ok:false, error:'BLOBS_NOT_AVAILABLE', message: String(e) }); }
+
+    let state;
+    try { state = (await store.get(STATE_KEY, { type: 'json' })) || { artCells: {} }; }
+    catch (e) { return res(500, { ok:false, error:'BLOBS_GET_FAILED', message: String(e) }); }
 
     const blocksSold = Object.keys(state.artCells || {}).length;
     const pixelsSold = blocksSold * 100;
