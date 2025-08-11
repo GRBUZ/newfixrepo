@@ -1,0 +1,16 @@
+{
+  "name": "influencers-wall",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "echo \"No build step\"",
+    "postinstall": "echo \"Dependencies installed\""
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

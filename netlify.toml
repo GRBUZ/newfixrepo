@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  # Ensure this package is included at runtime even if not bundled
+  external_node_modules = ["@netlify/blobs"]
