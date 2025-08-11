@@ -5,4 +5,8 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  external_node_modules = ["@netlify/blobs"]
+
+# (optional) declare which stores your functions will use
+# This can help certain environments initialize Blobs earlier.
+[functions."*"]
+  netlify_blobs = ["pixelwall_basic"]

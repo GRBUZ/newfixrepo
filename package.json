@@ -1,13 +1,13 @@
 {
-  "name": "influencers-wall-basic-noimage",
+  "name": "influencers-wall-v2-autoblobs",
   "version": "1.0.0",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "build": "echo \"no build\""
   },
   "dependencies": {
-    "@netlify/blobs": "^8.0.0"
+    "@netlify/blobs": "^8.2.0"
   },
   "engines": {
     "node": ">=18"
