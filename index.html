@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minimal Influencers Wall (Demo)</title>
+  <link rel="stylesheet" href="css/styles.css?v=1" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Influencers Wall: 1 million pixels</h1>
+      <p>Claim your spot on the ultimate influencer wall.</p>
+    </div>
+    <div class="actions">
+      <button id="buyBtn" disabled>Buy Pixels</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="grid" class="grid"></div>
+  </main>
+
+  <!-- Minimal modal -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="backdrop" data-close></div>
+    <div class="panel">
+      <div class="header">
+        <h2>Buy Pixels</h2>
+        <button class="close" data-close>&times;</button>
+      </div>
+      <form id="form" class="body">
+        <label>Link (Instagram/TikTok/YouTube)
+          <input id="link" name="linkUrl" placeholder="https://instagram.com/your-handle" required />
+        </label>
+        <label>Upload image
+          <input id="file" type="file" accept="image/*" required />
+        </label>
+        <div class="footer">
+          <button type="button" class="ghost" data-close>Cancel</button>
+          <button type="submit" id="confirm">Confirm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.minimal.js?v=1"></script>
+</body>
+</html>
