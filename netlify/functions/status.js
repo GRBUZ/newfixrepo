@@ -1,6 +1,6 @@
-/* Netlify Functions – Minimal status (returns sold cells) */
+/* Netlify Function – status (returns sold cells and computed pricing) */
 const { getStore } = require('@netlify/blobs');
-const STORE = 'reservations';
+const STORE = 'pixelwall';
 const STATE_KEY = 'state';
 
 function headers() {
@@ -19,10 +19,17 @@ exports.handler = async (event) => {
     const method = String(event.httpMethod || '').toUpperCase();
     if (method === 'OPTIONS') return res(204, {});
     if (method !== 'GET') return res(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
+
     const { getStore } = require('@netlify/blobs');
     const store = getStore(STORE, { consistency: 'strong' });
-    const state = (await store.get(STATE_KEY, { type: 'json' })) || { sold: {} };
-    return res(200, { ok:true, artCells: state.sold });
+    const state = (await store.get(STATE_KEY, { type: 'json' })) || { artCells: {} };
+
+    const blocksSold = Object.keys(state.artCells || {}).length;
+    const pixelsSold = blocksSold * 100;
+    const price = 1 + Math.floor(pixelsSold / 1000) * 0.01;
+    const left = 1_000_000 - pixelsSold;
+
+    return res(200, { ok:true, artCells: state.artCells, price, pixelsSold, pixelsLeft: left });
   } catch (e) {
     console.error('status error', e);
     return res(500, { ok:false, error:'SERVER_ERROR', message: e && e.message ? e.message : String(e) });

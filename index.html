@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Minimal Influencers Wall (Demo)</title>
-  <link rel="stylesheet" href="css/styles.css?v=1" />
+  <title>Influencers Wall — Minimal</title>
+  <link rel="stylesheet" href="css/style.css?v=1" />
 </head>
 <body>
   <header class="topbar">
@@ -12,13 +12,17 @@
       <h1>Influencers Wall: 1 million pixels</h1>
       <p>Claim your spot on the ultimate influencer wall.</p>
     </div>
+    <div class="meta">
+      <div id="priceLine" class="price">1 pixel = $1.00</div>
+      <div id="pixelsLeft" class="left">1,000,000 pixels left</div>
+    </div>
     <div class="actions">
-      <button id="buyBtn" disabled>Buy Pixels</button>
+      <button id="buyBtn" class="btn primary" disabled>Buy Pixels</button>
     </div>
   </header>
 
   <main>
-    <div id="grid" class="grid"></div>
+    <div id="grid" class="grid" aria-label="pixel grid"></div>
   </main>
 
   <!-- Minimal modal -->
@@ -27,7 +31,7 @@
     <div class="panel">
       <div class="header">
         <h2>Buy Pixels</h2>
-        <button class="close" data-close>&times;</button>
+        <button class="close" title="Close" data-close>&times;</button>
       </div>
       <form id="form" class="body">
         <label>Link (Instagram/TikTok/YouTube)
@@ -37,13 +41,18 @@
           <input id="file" type="file" accept="image/*" required />
         </label>
         <div class="footer">
-          <button type="button" class="ghost" data-close>Cancel</button>
-          <button type="submit" id="confirm">Confirm</button>
+          <button type="button" class="btn" data-close>Cancel (Esc)</button>
+          <button type="submit" id="confirm" class="btn primary">Confirm</button>
         </div>
       </form>
     </div>
   </div>
 
-  <script src="js/app.minimal.js?v=1"></script>
+  <footer class="footer">
+    <div>© <span id="year"></span> Influencers Wall — All rights reserved.</div>
+  </footer>
+
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <script src="js/app.js?v=1"></script>
 </body>
 </html>
