@@ -1,8 +1,4 @@
-/* Netlify Function – finalize (NO IMAGE) with explicit Blobs config via env.
-   Requires Netlify env vars:
-     - SITE_ID: your Project ID (Site settings → General → Project information → Project ID)
-     - BLOBS_TOKEN (or NETLIFY_AUTH_TOKEN): Personal Access Token with blobs access
-*/
+/* Netlify Function – finalize (NO IMAGE) — siteId/siteID compatibility patch */
 const { getStore } = require('@netlify/blobs');
 const STORE = 'pixelwall_basic';
 const STATE_KEY = 'state';
@@ -19,14 +15,12 @@ function res(statusCode, obj){ return { statusCode, headers: headers(), body: JS
 function isJsonCT(h){ const ct = h && (h['content-type'] || h['Content-Type'] || ''); return /application\/json/i.test(ct); }
 function uniqInts(list){ const out=[]; const seen=new Set(); (Array.isArray(list)?list:[]).forEach(v=>{ const n=Number(v); if(Number.isInteger(n)&&n>=0&&n<10000&&!seen.has(n)){ seen.add(n); out.push(n); } }); return out; }
 
-function getConfiguredStore() {
+function makeStore() {
   const siteID = process.env.SITE_ID || process.env.NETLIFY_SITE_ID;
   const token  = process.env.BLOBS_TOKEN || process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
-  if (!siteID || !token) {
-    const msg = 'Missing env SITE_ID and/or BLOBS_TOKEN (or NETLIFY_AUTH_TOKEN). Set them in Netlify → Site settings → Build & deploy → Environment.';
-    throw new Error(msg);
-  }
-  return getStore(STORE, { siteID, token });
+  if (!siteID || !token) throw new Error('Missing env SITE_ID and/or BLOBS_TOKEN/NETLIFY_AUTH_TOKEN');
+  // pass BOTH keys to satisfy different library versions
+  return getStore(STORE, { siteID, siteId: siteID, token });
 }
 
 exports.handler = async (event) => {
@@ -45,7 +39,7 @@ exports.handler = async (event) => {
     if (!linkUrl || !name || blocks.length === 0) return res(400, { ok:false, error:'MISSING_FIELDS' });
 
     let store;
-    try { store = getConfiguredStore(); } catch (e) { return res(500, { ok:false, error:'BLOBS_NOT_AVAILABLE', message: String(e) }); }
+    try { store = makeStore(); } catch (e) { return res(500, { ok:false, error:'BLOBS_NOT_AVAILABLE', message: String(e) }); }
 
     let state;
     try { state = (await store.get(STATE_KEY, { type: 'json' })) || { artCells: {} }; }
