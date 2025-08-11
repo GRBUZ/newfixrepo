@@ -1,40 +1,24 @@
-Firebase Minimal Backend — Setup (no Netlify Functions)
-====================================================
+Influencers Wall — Basic (no image)
+=====================================
 
-This project uses **Firebase Realtime Database** directly from the browser.
-No serverless functions, no Blobs, no CORS headaches.
-
-Steps
------
-1) Go to https://console.firebase.google.com → Create a project.
-2) Add a Web app → you'll get your **firebaseConfig**. Paste it into `js/app.firebase.js`.
-   - Make sure to also set **databaseURL** (copy it from your Firebase console).
-3) Realtime Database → Create database (in test mode for now).
-4) Rules (Basic anti-double purchase):
-   In Realtime Database → Rules, replace with:
-   {
-     "rules": {
-       ".read": true,
-       "artCells": {
-         "$idx": {
-           ".write": "!data.exists()"  // allow create only if the cell is not already sold
-         }
-       }
-     }
-   }
-   Publish the rules.
-
-5) Deploy the static site anywhere (Netlify, GitHub Pages, Vercel, Firebase Hosting).
-
-How it works
+What it does
 ------------
-- Grid is 100x100, selection by drag or individual clicks.
-- Price increases by $0.01 for every 1000 pixels (100 blocks) sold.
-- When confirming, the client compresses the uploaded image and writes to `artCells/{idx}` with a **transaction**.
-  If a cell is already taken, the transaction won't commit, so it's safe against race conditions.
-- The image is one single mosaic across the whole selected rectangle.
+- 100×100 grid; drag or click to select blocks.
+- Modal asks only **Display name** + **Profile URL** (no image).
+- On confirm, blocks are marked **SOLD** (grey) and linkable to the URL.
+- Price line: +$0.01 every 1000 pixels sold.
+
+Deploy (Netlify)
+----------------
+1) Put all files at repo root. Commit & push.
+2) In Netlify → **Site settings → Build & deploy → Environment** add:
+   - `SITE_ID` = your Project ID (General → Project information → Project ID)
+   - `BLOBS_TOKEN` = a Personal Access Token (or `NETLIFY_AUTH_TOKEN`) with blobs access
+3) **Clear cache and deploy**.
+4) Check `/.netlify/functions/diag` → should show `{ ok: true, blobsOk: true }`.
+5) Test the UI: select → Buy Pixels → fill name+URL → Confirm.
 
 Notes
 -----
-- For production, tighten rules (auth, rate limit, per-user quotas).
-- We keep payloads small by compressing images (<= ~600px width).
+- If some blocks are already taken, server returns 409 and the UI removes those from the selection.
+- Later, you can manually add images in your repo and extend the front to show them using your data file.

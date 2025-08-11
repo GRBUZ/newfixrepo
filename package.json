@@ -1,0 +1,15 @@
+{
+  "name": "influencers-wall-basic-noimage",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "echo \"no build\""
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
