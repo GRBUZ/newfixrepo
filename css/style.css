@@ -46,58 +46,27 @@ main{display:flex;justify-content:center;padding:16px}
   box-shadow: 0 0 0 2px rgba(239,68,68,0.35) inset;
   border-radius: 2px;
 }
-
-/* --- Classic simple top like your current site --- */
-.topbar--classic{
-  background:#fff;
-  border-bottom:1px solid #eaeaea;
+/* --- Header: banner + thin nav --- */
+.hero {
+  background: linear-gradient(180deg, var(--violet) 0%, var(--violet-dark) 100%);
+  color: #fff;
+  border-bottom: 1px solid var(--line);
 }
-.topbar__inner{
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 12px 12px 10px;
-  text-align:center;
+.hero-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
 }
-.topbar__title{
-  font-size: 18px;
+.brand h1 {
   margin: 0;
-  line-height: 1.2;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: .2px;
 }
-.topbar__tagline{
-  margin: 4px 0 8px;
-  font-size: 13px;
-  color:#555;
+.brand .tagline {
+  margin: 2px 0 0;
+  font-size: .95rem;
+  opacity: .95;
 }
-.topbar__stats{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap: 2px;
-  margin-bottom: 8px;
-}
-.topbar__price{ font-weight: 700; }
-.topbar__note, .topbar__left{ font-size: 12px; color:#666; }
-
-.topbar__actions{
-  display:flex;
-  gap:10px;
-  justify-content:center;
-  padding-bottom: 4px;
-}
-
-.btn{
-  appearance:none;
-  border:1px solid #d0d0d0;
-  background:#f8f8f8;
-  color:#222;
-  padding:7px 12px;
-  border-radius:8px;
-  font-size:14px;
-  font-weight:600;
-  cursor:pointer;
-  transition: background .15s ease, border-color .15s ease, transform .06s ease;
-}
-.btn:hover{ background:#f2f2f2; transform:translateY(-1px); }
-.btn:disabled{ opacity:.6; cursor:not-allowed; transform:none; }
-.btn.primary{ background:#111; color:#fff; border-color:#111; }
-.btn.primary:hover{ background:#000; }

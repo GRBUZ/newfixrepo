@@ -3,31 +3,35 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Influencers Wall — Classic Top</title>
+  <title>Influencers Wall — Modal update</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <header class="topbar topbar--classic">
-    <div class="topbar__inner">
-      <h1 class="topbar__title">Influencers Wall: 1 million pixels</h1>
-      <p class="topbar__tagline">Claim your spot on the ultimate influencer wall.</p>
-      <div class="topbar__stats">
-        <div id="priceLine" class="topbar__price">1 Pixel = $1.00</div>
-        <div class="topbar__note">Every 1,000 pixels sold, price +$0.01</div>
-        <div id="pixelsLeft" class="topbar__left">1 000 000 pixels left</div>
+  <header class="hero">
+    <div class="container hero-row">
+      <div class="brand">
+        <h1>Influencers Wall: 1 million pixels</h1>
+        <p class="tagline">Claim your spot on the ultimate influencer wall.</p>
       </div>
-      <div class="topbar__actions">
-        <button id="buyBtn" class="btn primary" disabled>Buy Pixels</button>
-        <a id="contactBtn" class="btn" href="mailto:hello@example.com">Contact Me</a>
+      <div class="stats">
+        <div id="priceLine" class="price">1 Pixel = $1.00</div>
+        <div class="rule">Every 1,000 pixels sold, price +$0.01</div>
+        <div id="pixelsLeft" class="left">1,000,000 pixels left</div>
       </div>
     </div>
+    <nav class="nav">
+      <div class="container nav-row">
+        <a id="buyButton" class="nav-link" href="javascript:void(0)">Buy Pixels</a>
+        <a id="contactButton" class="nav-link ghost" href="mailto:you@domain.com">Contact Me</a>
+      </div>
+    </nav>
   </header>
 
   <main>
     <div id="grid" class="grid" aria-label="pixel grid"></div>
   </main>
 
-  <!-- Modal kept as-is -->
+  <!-- Modal (updated header + fields) -->
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="backdrop" data-close></div>
     <div class="panel">
