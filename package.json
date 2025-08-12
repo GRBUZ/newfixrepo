@@ -1,14 +1,8 @@
 {
-  "name": "influencers-wall-v2-autoblobs",
+  "name": "netlify-github-storage-patch",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "echo \"no build\""
-  },
-  "dependencies": {
-    "@netlify/blobs": "^8.2.0"
-  },
   "engines": {
     "node": ">=18"
   }

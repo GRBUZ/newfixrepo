@@ -1,39 +1,58 @@
-// Netlify Functions v2 (ESM) — status
-import { getStore } from '@netlify/blobs';
-
-const STORE = 'pixelwall_basic';
-const STATE_KEY = 'state';
-
-const json = (status, obj) => new Response(JSON.stringify(obj), {
-  status,
-  headers: {
-    'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,OPTIONS',
-    'access-control-allow-headers': 'content-type',
-    'cache-control': 'no-store'
-  },
-});
-
 export default async (req, context) => {
+  const headers = {
+    'content-type':'application/json; charset=utf-8',
+    'access-control-allow-origin':'*',
+    'cache-control':'no-store'
+  };
   try {
-    if (req.method === 'OPTIONS') return json(204, {});
-    if (req.method !== 'GET') return json(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
+    if (req.method === 'OPTIONS') return new Response('', { status:204, headers });
+    if (req.method !== 'GET') return new Response(JSON.stringify({ ok:false, error:'METHOD_NOT_ALLOWED' }), { status:405, headers });
 
-    let store;
-    try { store = getStore(STORE); }
-    catch (e) { return json(500, { ok:false, error:'GETSTORE_FAILED', message:String(e) }); }
+    const env = context.env || process.env;
+    const repo = env.GH_REPO;
+    const token = env.GH_TOKEN;
+    const branch = env.GH_BRANCH || 'main';
+    const path = env.PATH_JSON || 'data/state.json';
+    if (!repo || !token) {
+      return new Response(JSON.stringify({ ok:false, error:'ENV_MISSING', message:'Set GH_REPO and GH_TOKEN.' }), { status:500, headers });
+    }
 
-    let state = await store.get(STATE_KEY, { type: 'json' });
-    if (!state) state = { artCells: {} };
+    const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+    const r = await fetch(url, {
+      headers: {
+        'authorization': `Bearer ${token}`,
+        'accept': 'application/vnd.github+json',
+        'user-agent': 'netlify-fn-status'
+      }
+    });
+    if (r.status === 404) {
+      // empty initial state
+      const state = { artCells: {} };
+      return new Response(JSON.stringify({
+        ok:true,
+        artCells: state.artCells,
+        price: 1.00,
+        pixelsSold: 0,
+        pixelsLeft: 1_000_000
+      }), { status:200, headers });
+    }
+    if (!r.ok) {
+      const txt = await r.text();
+      return new Response(JSON.stringify({ ok:false, error:'GITHUB_READ_FAILED', status:r.status, body:txt }), { status:500, headers });
+    }
+    const json = await r.json();
+    const content = Buffer.from(json.content, 'base64').toString('utf-8');
+    let state = {};
+    try { state = JSON.parse(content); } catch { state = { artCells:{} }; }
+    state.artCells = state.artCells || {};
 
-    const blocksSold = Object.keys(state.artCells || {}).length;
+    const blocksSold = Object.keys(state.artCells).length;
     const pixelsSold = blocksSold * 100;
     const price = 1 + Math.floor(pixelsSold / 1000) * 0.01;
     const left = 1_000_000 - pixelsSold;
 
-    return json(200, { ok:true, artCells: state.artCells, price, pixelsSold, pixelsLeft: left });
+    return new Response(JSON.stringify({ ok:true, artCells: state.artCells, price, pixelsSold, pixelsLeft: left }), { status:200, headers });
   } catch (e) {
-    return json(500, { ok:false, error:'SERVER_ERROR', message: String(e) });
+    return new Response(JSON.stringify({ ok:false, error:'SERVER_ERROR', message:String(e) }), { status:500, headers });
   }
 };

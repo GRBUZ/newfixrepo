@@ -1,24 +1,36 @@
-// Netlify Functions v2 (ESM) — diag
-import { getStore } from '@netlify/blobs';
-
-const json = (status, obj) => new Response(JSON.stringify(obj), {
-  status,
-  headers: { 'content-type': 'application/json; charset=utf-8' },
-});
-
-export default async () => {
+// Functions v2 ESM
+export default async (req, context) => {
+  const headers = {'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*'};
   try {
-    const info = { node: process.version, runtime: 'functions-v2' };
-    let ok = false, setErr=null, getErr=null;
-    try {
-      const store = getStore('pixelwall_basic');
-      try { await store.setJSON('diag', { ok:true, ts: Date.now() }); } catch (e) { setErr = String(e); }
-      try { const v = await store.get('diag', { type: 'json' }); ok = !!(v && v.ok); } catch (e) { getErr = String(e); }
-    } catch (e) {
-      return json(500, { ok:false, error:'GETSTORE_FAILED', message:String(e), info });
+    const env = context.env || process.env;
+    const repo = env.GH_REPO;
+    const token = env.GH_TOKEN;
+    const branch = env.GH_BRANCH || 'main';
+    const path = env.PATH_JSON || 'data/state.json';
+    const info = {
+      node: process.version,
+      repoSet: !!repo,
+      tokenSet: !!token,
+      branch,
+      path
+    };
+    if (!repo || !token) {
+      return new Response(JSON.stringify({ ok:false, error:'ENV_MISSING', message:'Set GH_REPO and GH_TOKEN in Environment variables.', info }), { status:500, headers });
     }
-    return json(200, { ok:true, blobsOk: ok, setErr, getErr });
+    // Try a GET to see if we can read (404 is fine)
+    const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+    const r = await fetch(url, {
+      headers: {
+        'authorization': `Bearer ${token}`,
+        'accept': 'application/vnd.github+json',
+        'user-agent': 'netlify-fn-diag'
+      }
+    });
+    const status = r.status;
+    let body = null;
+    try { body = await r.json(); } catch {}
+    return new Response(JSON.stringify({ ok:true, readable: status===200, status, body }), { status:200, headers });
   } catch (e) {
-    return json(500, { ok:false, error:'SERVER_ERROR', message: String(e) });
+    return new Response(JSON.stringify({ ok:false, error:'SERVER_ERROR', message: String(e) }), { status:500, headers });
   }
 };

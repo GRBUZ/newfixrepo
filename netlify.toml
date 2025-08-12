@@ -1,12 +1,7 @@
 [build]
-  command = "npm run build"
+  command = ""
   publish = "."
 
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-
-# (optional) declare which stores your functions will use
-# This can help certain environments initialize Blobs earlier.
-[functions."*"]
-  netlify_blobs = ["pixelwall_basic"]
