@@ -1,7 +1,6 @@
-// Influencers Wall — merged app.js
-// - Fixes the "lost cell after drag" by suppressing stray click
-// - Keeps full dynamic flow: reserve (on Buy), unlock (on Cancel/ESC), finalize (on Confirm)
-// - Uses GitHub-backed functions: /status, /reserve, /unlock, /finalize
+// Influencers Wall — app.js with manual image overlays
+// Supports adding { imageUrl, rect:{x,y,w,h} } per sold block in data/state.json
+// Keep existing dynamic flow (reserve on Buy, unlock on Cancel/ESC, finalize on Confirm).
 
 const N = 100;
 const CELL = 10;
@@ -26,7 +25,7 @@ const uid = (() => {
 })();
 
 // State
-let sold = {};     // { idx: { name, linkUrl, ts } }
+let sold = {};     // { idx: { name, linkUrl, ts, imageUrl?, rect? } }
 let locks = {};    // { idx: { uid, until } }
 let selected = new Set();
 
@@ -64,7 +63,23 @@ function paintCell(idx){
   d.classList.toggle('pending', !!reservedByOther);
   d.classList.toggle('sel', selected.has(idx));
 
+  // RESET per-cell visuals
+  d.style.backgroundImage='';
+  d.style.backgroundSize='';
+  d.style.backgroundPosition='';
+
   if (s){
+    // If imageUrl+rect exist, draw the sliced background across the rect
+    if (s.imageUrl && s.rect && Number.isInteger(s.rect.x) && Number.isInteger(s.rect.y) && Number.isInteger(s.rect.w) && Number.isInteger(s.rect.h)) {
+      const [r,c]=idxToRowCol(idx);
+      const offX = (c - s.rect.x) * CELL;
+      const offY = (r - s.rect.y) * CELL;
+      d.style.backgroundImage = `url(${s.imageUrl})`;
+      d.style.backgroundSize = `${s.rect.w*CELL}px ${s.rect.h*CELL}px`;
+      d.style.backgroundPosition = `-${offX}px -${offY}px`;
+    }
+
+    // Clickable link overlay
     d.title = (s.name ? s.name + ' · ' : '') + (s.linkUrl || '');
     if (!d.firstChild) { const a=document.createElement('a'); a.className='region-link'; a.target='_blank'; d.appendChild(a); }
     d.firstChild.href = s.linkUrl || '#';
@@ -73,6 +88,7 @@ function paintCell(idx){
     if (d.firstChild) d.firstChild.remove();
   }
 }
+
 function paintAll(){ for(let i=0;i<N*N;i++) paintCell(i); refreshTopbar(); }
 
 function refreshTopbar(){
@@ -168,7 +184,6 @@ window.addEventListener('keydown', async (e)=>{
 // ---------- Buy flow ----------
 buyBtn.addEventListener('click', async () => {
   if (!selected.size) return;
-  // Reserve server-side (one call, fewer commits)
   const want = Array.from(selected);
   try {
     const got = await reserve(want);
@@ -206,7 +221,6 @@ form.addEventListener('submit', async (e)=>{
     }
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
     sold = res.soldMap || sold;
-    // cleanup any leftover locks
     try { await unlock(blocks); } catch {}
     clearSelection(); paintAll(); closeModal();
   } catch (err) {
