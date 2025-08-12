@@ -1,6 +1,7 @@
-// Modal header summary + required Email field
-// Keeps reserve/unlock/finalize/status flow (GitHub storage).
-// Includes drag-rect selection and post-drag click suppression.
+// No-holes selection patch
+// - Prevents selecting rectangles that include sold/reserved cells
+// - On reserve(), if any conflicts, the whole selection is rejected
+// - Keeps: drag suppression, modal summary, formatting, email field
 
 const N = 100;
 const CELL = 10;
@@ -30,6 +31,7 @@ let selected = new Set();
 
 // drag state
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
+let blockedDuringDrag = false; // true if current rectangle crosses a sold/reserved cell
 
 (function build(){
   const frag=document.createDocumentFragment();
@@ -40,6 +42,12 @@ let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, su
 function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
 function rowColToIdx(r,c){ return r*N + c; }
 
+function isBlockedCell(idx){
+  if (sold[idx]) return true;
+  const l = locks[idx];
+  return !!(l && l.until > Date.now() && l.uid !== uid);
+}
+
 function paintCell(idx){
   const d=grid.children[idx]; const s=sold[idx]; const l=locks[idx];
   const reserved = l && l.until > Date.now() && !s;
@@ -49,7 +57,7 @@ function paintCell(idx){
   d.classList.toggle('pending', !!reservedByOther);
   d.classList.toggle('sel', selected.has(idx));
 
-  // if imageUrl+rect present, render background slice
+  // image overlay if present
   if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)) {
     const [r,c]=idxToRowCol(idx);
     const offX=(c - s.rect.x)*CELL, offY=(r - s.rect.y)*CELL;
@@ -95,24 +103,40 @@ function clearSelection(){
   refreshTopbar();
 }
 
+// Rectangle selection that rejects any area containing blocked cells
 function selectRect(aIdx,bIdx){
-  clearSelection();
   const [ar,ac]=idxToRowCol(aIdx), [br,bc]=idxToRowCol(bIdx);
   const r0=Math.min(ar,br), r1=Math.max(ar,br), c0=Math.min(ac,bc), c1=Math.max(ac,bc);
+
+  // First pass: detect any blocked cell inside rect
+  blockedDuringDrag = false;
+  for(let r=r0;r<=r1;r++){
+    for(let c=c0;c<=c1;c++){
+      const idx=rowColToIdx(r,c);
+      if (isBlockedCell(idx)) { blockedDuringDrag = true; break; }
+    }
+    if (blockedDuringDrag) break;
+  }
+
+  if (blockedDuringDrag){
+    // Reject the whole rectangle (no partials)
+    clearSelection();
+    refreshTopbar();
+    return;
+  }
+
+  // Accept the rectangle → build selection
+  clearSelection();
   for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
     const idx=rowColToIdx(r,c);
-    if (sold[idx]) continue;
-    const l=locks[idx]; const reservedByOther = l && l.until > Date.now() && l.uid !== uid;
-    if (!reservedByOther) selected.add(idx);
+    selected.add(idx);
   }
   for(const i of selected) grid.children[i].classList.add('sel');
   refreshTopbar();
 }
 
 function toggleCell(idx){
-  if (sold[idx]) return;
-  const l=locks[idx]; const reservedByOther = l && l.until > Date.now() && l.uid !== uid;
-  if (reservedByOther) return;
+  if (isBlockedCell(idx)) return;
   const d=grid.children[idx];
   if (selected.has(idx)) { selected.delete(idx); d.classList.remove('sel'); }
   else { selected.add(idx); d.classList.add('sel'); }
@@ -139,8 +163,11 @@ window.addEventListener('mousemove',(e)=>{
   selectRect(dragStartIdx, idx);
 });
 window.addEventListener('mouseup',()=>{
-  if(isDragging){ suppressNextClick=movedDuringDrag; }
-  isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1;
+  if (isDragging && blockedDuringDrag){
+    alert('Your rectangle includes blocks that are already SOLD or RESERVED. Please select a free area.');
+  }
+  if (isDragging){ suppressNextClick=movedDuringDrag; }
+  isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1; blockedDuringDrag=false;
 });
 grid.addEventListener('click',(e)=>{
   if(suppressNextClick){ suppressNextClick=false; return; }
@@ -151,7 +178,6 @@ grid.addEventListener('click',(e)=>{
 
 function openModal(){ 
   modal.classList.remove('hidden');
-  // summary
   const blocksSold=Object.keys(sold).length, pixelsSold=blocksSold*100;
   const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
   const selectedPixels = selected.size * 100;
@@ -176,9 +202,16 @@ buyBtn.addEventListener('click', async ()=>{
   const want = Array.from(selected);
   try{
     const got = await reserve(want);
+    // Reject if any conflict or partial locking (no-holes policy)
+    if ((got.conflicts && got.conflicts.length>0) || (got.locked && got.locked.length !== want.length)){
+      clearSelection();
+      paintAll();
+      alert('Some blocks in your selection are SOLD or RESERVED. Please pick a free rectangle.');
+      return;
+    }
+    // All good → mark selection from server-locked set (should match want)
     clearSelection();
     for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
-    if (selected.size===0){ alert('These blocks were just reserved or sold.'); return; }
     openModal();
   }catch(e){
     alert('Reservation failed: ' + (e?.message || e));
@@ -199,7 +232,11 @@ form.addEventListener('submit', async (e)=>{
       body: JSON.stringify({ uid, blocks, linkUrl, name, email })
     });
     const res = await r.json();
-    if (r.status===409 && res.taken){ for(const b of res.taken){ grid.children[b].classList.remove('sel'); selected.delete(b); } alert('Some blocks were taken.'); refreshTopbar(); return; }
+    if (r.status===409 && res.taken){
+      clearSelection(); paintAll();
+      alert('Some blocks were taken meanwhile. Please reselect.');
+      return;
+    }
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
     sold = res.soldMap || sold;
     try{ await unlock(blocks); }catch{}
