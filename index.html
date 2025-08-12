@@ -3,23 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Influencers Wall — Topbar update</title>
+  <title>Influencers Wall — Classic Top</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <header class="topbar topbar--purple">
-    <div class="brand">
-      <h1>Influencers Wall: 1 million pixels</h1>
-      <p>Claim your spot on the ultimate influencer wall.</p>
-    </div>
-    <div class="meta">
-      <div id="priceLine" class="price">1 pixel = $1.00</div>
-      <div id="priceNote" class="note">Every 1,000 pixels sold, price increases by $0.01.</div>
-      <div id="pixelsLeft" class="left">1 000 000 pixels left</div>
-    </div>
-    <div class="actions actions--center">
-      <button id="buyBtn" class="btn btn--primary" disabled>Buy Pixels</button>
-      <a id="contactBtn" class="btn btn--ghost" href="mailto:hello@example.com">Contact Me</a>
+  <header class="topbar topbar--classic">
+    <div class="topbar__inner">
+      <h1 class="topbar__title">Influencers Wall: 1 million pixels</h1>
+      <p class="topbar__tagline">Claim your spot on the ultimate influencer wall.</p>
+      <div class="topbar__stats">
+        <div id="priceLine" class="topbar__price">1 Pixel = $1.00</div>
+        <div class="topbar__note">Every 1,000 pixels sold, price +$0.01</div>
+        <div id="pixelsLeft" class="topbar__left">1 000 000 pixels left</div>
+      </div>
+      <div class="topbar__actions">
+        <button id="buyBtn" class="btn primary" disabled>Buy Pixels</button>
+        <a id="contactBtn" class="btn" href="mailto:hello@example.com">Contact Me</a>
+      </div>
     </div>
   </header>
 
@@ -27,7 +27,7 @@
     <div id="grid" class="grid" aria-label="pixel grid"></div>
   </main>
 
-  <!-- Existing modal (kept as-is) -->
+  <!-- Modal kept as-is -->
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="backdrop" data-close></div>
     <div class="panel">
@@ -48,7 +48,7 @@
         </label>
         <div class="footer">
           <button type="button" class="btn" data-close>Cancel (Esc)</button>
-          <button type="submit" id="confirm" class="btn btn--primary">Confirm</button>
+          <button type="submit" id="confirm" class="btn primary">Confirm</button>
         </div>
       </form>
     </div>
