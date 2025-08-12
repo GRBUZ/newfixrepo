@@ -71,55 +71,67 @@
       "h": 2
     }
   },
-  "sold": {},
-  "locks": {
+  "sold": {
     "445": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "446": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "447": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "448": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "545": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "546": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "547": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "548": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "645": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "646": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "647": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     },
     "648": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755016415745
+      "name": "tata",
+      "linkUrl": "https://test.com",
+      "ts": 1755016247052
     }
-  }
+  },
+  "locks": {}
 }
