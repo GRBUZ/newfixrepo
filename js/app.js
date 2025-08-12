@@ -36,6 +36,14 @@ let movedDuringDrag = false;
 let lastDragIdx = -1;
 let suppressNextClick = false;
 
+function formatInt(n) {
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+function formatMoney(n) {
+  const [i, d] = n.toFixed(2).split('.');
+  return '$' + i.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '.' + d;
+}
+
 // ---------- Build grid ----------
 (function build(){
   const frag = document.createDocumentFragment();
@@ -92,24 +100,21 @@ function paintCell(idx){
 function paintAll(){ for(let i=0;i<N*N;i++) paintCell(i); refreshTopbar(); }
 
 function refreshTopbar(){
-  // Pixels déjà vendus (1 bloc = 100 pixels)
   const blocksSold  = Object.keys(sold).length;
   const pixelsSold  = blocksSold * 100;
 
-  // Prix courant : +$0.01 chaque 1000 pixels vendus
   const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
 
-  // MAJ de la ligne prix et des pixels restants en haut
-  priceLine.textContent = `1 pixel = $${currentPrice.toFixed(2)}`;
+  // prix unitaire + pixels restants (espaces pour milliers)
+  priceLine.textContent = `1 pixel = ${formatMoney(currentPrice)}`;
   const left = TOTAL_PIXELS - pixelsSold;
-  pixelsLeftEl.textContent = `${left.toLocaleString()} pixels left`;
+  pixelsLeftEl.textContent = `${formatInt(left)} pixels left`;
 
-  // Sélection en cours
+  // sélection en cours
   const selectedPixels = selected.size * 100;
-
   if (selectedPixels > 0) {
     const total = selectedPixels * currentPrice;
-    buyBtn.textContent = `Buy Pixels — ${selectedPixels.toLocaleString()} px ($${total.toFixed(2)})`;
+    buyBtn.textContent = `Buy Pixels — ${formatInt(selectedPixels)} px (${formatMoney(total)})`;
     buyBtn.disabled = false;
   } else {
     buyBtn.textContent = `Buy Pixels`;
