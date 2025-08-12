@@ -46,3 +46,90 @@ main{display:flex;justify-content:center;padding:16px}
   box-shadow: 0 0 0 2px rgba(239,68,68,0.35) inset;
   border-radius: 2px;
 }
+
+/* === Purple hero header like your screenshot === */
+.hero{
+  background: linear-gradient(180deg, #7C3AED 0%, #6D28D9 20%, #6A21CF 60%, #5B21B6 100%);
+  color: #fff;
+}
+.container{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+.hero-top{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0 22px;
+}
+.brand h1{
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(20px, 3.2vw, 28px);
+  letter-spacing: .2px;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.08);
+}
+.brand p{
+  margin: 6px 0 0;
+  font-size: clamp(12px, 1.7vw, 16px);
+  opacity: .95;
+}
+
+.meta{
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meta .price{
+  font-weight: 800;
+  font-size: clamp(14px, 2.2vw, 18px);
+}
+.meta .note,
+.meta .left{
+  font-size: 13px;
+  color: #F3E8FF;
+  opacity: .95;
+}
+
+/* thin divider + action bar */
+.hero-actions{
+  border-top: 1px solid rgba(255,255,255,0.3);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04));
+  padding: 10px 0 12px;
+}
+.actions-center{
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+/* Pill buttons */
+.btn{
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.1;
+  cursor: pointer;
+  border-radius: 9999px;
+  padding: 10px 18px;
+  border: 1px solid rgba(255,255,255,0.55);
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  transition: background .15s ease, transform .06s ease, border-color .15s ease;
+  text-decoration: none;
+}
+.btn:hover{ background: rgba(255,255,255,0.12); transform: translateY(-1px); }
+.btn:disabled{ opacity: .6; cursor: not-allowed; transform: none; }
+.btn.primary{
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.75);
+}
+.btn.primary:hover{ background: rgba(255,255,255,0.18); }
+
+/* Mobile layout: stack */
+@media (max-width: 760px){
+  .hero-top{ grid-template-columns: 1fr; text-align: center; }
+  .meta{ text-align: center; }
+}
