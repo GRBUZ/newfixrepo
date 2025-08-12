@@ -133,3 +133,17 @@ main{display:flex;justify-content:center;padding:16px}
   .hero-top{ grid-template-columns: 1fr; text-align: center; }
   .meta{ text-align: center; }
 }
+/* === HOTFIX: restore visible buttons inside the modal === */
+.modal .btn{
+  background:#f8f8f8;
+  color:#222;
+  border:1px solid #d0d0d0;
+}
+.modal .btn:hover{ background:#f2f2f2; }
+
+.modal .btn.primary{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+.modal .btn.primary:hover{ background:#000; }
