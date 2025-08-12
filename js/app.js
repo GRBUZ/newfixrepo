@@ -92,13 +92,31 @@ function paintCell(idx){
 function paintAll(){ for(let i=0;i<N*N;i++) paintCell(i); refreshTopbar(); }
 
 function refreshTopbar(){
-  const blocksSold = Object.keys(sold).length;
-  const pixelsSold = blocksSold * 100;
-  const price = 1 + Math.floor(pixelsSold/1000)*0.01;
-  priceLine.textContent = `1 pixel = $${price.toFixed(2)}`;
-  pixelsLeftEl.textContent = `${(TOTAL_PIXELS - pixelsSold).toLocaleString()} pixels left`;
-  buyBtn.disabled = selected.size === 0;
+  // Pixels déjà vendus (1 bloc = 100 pixels)
+  const blocksSold  = Object.keys(sold).length;
+  const pixelsSold  = blocksSold * 100;
+
+  // Prix courant : +$0.01 chaque 1000 pixels vendus
+  const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
+
+  // MAJ de la ligne prix et des pixels restants en haut
+  priceLine.textContent = `1 pixel = $${currentPrice.toFixed(2)}`;
+  const left = TOTAL_PIXELS - pixelsSold;
+  pixelsLeftEl.textContent = `${left.toLocaleString()} pixels left`;
+
+  // Sélection en cours
+  const selectedPixels = selected.size * 100;
+
+  if (selectedPixels > 0) {
+    const total = selectedPixels * currentPrice;
+    buyBtn.textContent = `Buy Pixels — ${selectedPixels.toLocaleString()} px ($${total.toFixed(2)})`;
+    buyBtn.disabled = false;
+  } else {
+    buyBtn.textContent = `Buy Pixels`;
+    buyBtn.disabled = true;
+  }
 }
+
 
 function clearSelection(){
   for(const i of selected) grid.children[i].classList.remove('sel');
