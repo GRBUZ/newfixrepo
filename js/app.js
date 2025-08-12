@@ -1,11 +1,10 @@
-// No-holes selection + red highlight + centered forbidden icon
-// - Reject rectangles that include SOLD/RESERVED cells
-// - Show a red overlay + a centered "forbidden" icon (circle+slash)
-// - On /reserve conflicts or partial lock, flash the same overlay
-// - Keeps: drag suppression, modal summary, required fields
+// Forbidden icon overlay — robust version
+// - Overlay appended AFTER cells to ensure it's on top
+// - Cell size computed from DOM (handles CSS changes)
+// - High z-index; ensure grid has position:relative
+// - No-holes selection logic retained
 
 const N = 100;
-const CELL = 10;
 const TOTAL_PIXELS = 1_000_000;
 
 const grid = document.getElementById('grid');
@@ -33,69 +32,66 @@ let selected = new Set();
 // drag state
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;
-let blockedRect = null; // {r0,c0,r1,c1}
 
-// ----- invalid overlay with icon -----
+// ---------- Build grid ----------
+(function build(){
+  const frag=document.createDocumentFragment();
+  for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='cell'; d.dataset.idx=i; frag.appendChild(d); }
+  grid.appendChild(frag);
+  const cs = getComputedStyle(grid);
+  if (cs.position === 'static') grid.style.position = 'relative';
+})();
+
+// ---------- Overlay (added AFTER cells so it's on top) ----------
 const invalidEl = document.createElement('div');
 invalidEl.id = 'invalidRect';
-invalidEl.style.position = 'absolute';
-invalidEl.style.border = '2px solid #ef4444';
-invalidEl.style.background = 'rgba(239,68,68,0.08)';
-invalidEl.style.pointerEvents = 'none';
-invalidEl.style.display = 'none';
-invalidEl.style.zIndex = '6';
-
-// ensure grid is positioning context
-const gridStyle = getComputedStyle(grid);
-if (gridStyle.position === 'static') grid.style.position = 'relative';
-
-// create centered icon (SVG) inside overlay
+Object.assign(invalidEl.style, {
+  position: 'absolute',
+  border: '2px solid #ef4444',
+  background: 'rgba(239,68,68,0.08)',
+  pointerEvents: 'none',
+  display: 'none',
+  zIndex: '999'
+});
 const invalidIcon = document.createElement('div');
-invalidIcon.style.position = 'absolute';
-invalidIcon.style.left = '50%';
-invalidIcon.style.top = '50%';
-invalidIcon.style.transform = 'translate(-50%, -50%)';
-invalidIcon.style.pointerEvents = 'none';
-invalidIcon.style.zIndex = '7';
+Object.assign(invalidIcon.style, {
+  position: 'absolute',
+  left: '50%',
+  top: '50%',
+  transform: 'translate(-50%, -50%)',
+  pointerEvents: 'none',
+  zIndex: '1000'
+});
 invalidIcon.innerHTML = `
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <!-- white disc for contrast -->
     <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle>
-    <!-- red circle -->
     <circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" stroke-width="2"></circle>
-    <!-- red slash -->
     <line x1="7" y1="17" x2="17" y2="7" stroke="#ef4444" stroke-width="2" stroke-linecap="round"></line>
   </svg>
 `;
 invalidEl.appendChild(invalidIcon);
 grid.appendChild(invalidEl);
 
+function getCellSize(){
+  const cell = grid.children[0];
+  if (!cell) return { w: 10, h: 10 };
+  const r = cell.getBoundingClientRect();
+  return { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
+}
 function showInvalidRect(r0,c0,r1,c1, ttl=900){
-  const left = c0*CELL, top = r0*CELL;
-  const w = (c1-c0+1)*CELL, h = (r1-r0+1)*CELL;
-  invalidEl.style.left = left+'px';
-  invalidEl.style.top = top+'px';
-  invalidEl.style.width = w+'px';
-  invalidEl.style.height = h+'px';
-  // icon size adaptive to rect size (fits 1-cell too)
-  const size = Math.max(16, Math.min(48, Math.floor(Math.min(w, h) * 0.7)));
-  const svg = invalidIcon.querySelector('svg');
-  svg.style.width = size+'px';
-  svg.style.height = size+'px';
-  invalidEl.style.display = 'block';
+  const { w:CW, h:CH } = getCellSize();
+  const left = c0*CW, top = r0*CH;
+  const w = (c1-c0+1)*CW, h = (r1-r0+1)*CH;
+  Object.assign(invalidEl.style, { left:left+'px', top:top+'px', width:w+'px', height:h+'px', display:'block' });
+  const size = Math.max(16, Math.min(64, Math.floor(Math.min(w, h) * 0.7)));
+  const svg = invalidIcon.querySelector('svg'); svg.style.width = size+'px'; svg.style.height = size+'px';
   if (ttl>0){ setTimeout(()=>{ invalidEl.style.display='none'; }, ttl); }
 }
 function hideInvalidRect(){ invalidEl.style.display='none'; }
 
-(function build(){
-  const frag=document.createDocumentFragment();
-  for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='cell'; d.dataset.idx=i; frag.appendChild(d); }
-  grid.appendChild(frag);
-})();
-
+// ---------- Helpers ----------
 function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
 function rowColToIdx(r,c){ return r*N + c; }
-
 function isBlockedCell(idx){
   if (sold[idx]) return true;
   const l = locks[idx];
@@ -113,9 +109,10 @@ function paintCell(idx){
 
   if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)) {
     const [r,c]=idxToRowCol(idx);
-    const offX=(c - s.rect.x)*CELL, offY=(r - s.rect.y)*CELL;
+    const { w:CW, h:CH } = getCellSize();
+    const offX=(c - s.rect.x)*CW, offY=(r - s.rect.y)*CH;
     d.style.backgroundImage = `url(${s.imageUrl})`;
-    d.style.backgroundSize = `${s.rect.w*CELL}px ${s.rect.h*CELL}px`;
+    d.style.backgroundSize = `${s.rect.w*CW}px ${s.rect.h*CH}px`;
     d.style.backgroundPosition = `-${offX}px -${offY}px`;
   } else {
     d.style.backgroundImage=''; d.style.backgroundSize=''; d.style.backgroundPosition='';
@@ -161,7 +158,7 @@ function selectRect(aIdx,bIdx){
   const r0=Math.min(ar,br), r1=Math.max(ar,br), c0=Math.min(ac,bc), c1=Math.max(ac,bc);
 
   // detect blocked cells
-  blockedDuringDrag = false; blockedRect = {r0,c0,r1,c1};
+  blockedDuringDrag = false;
   for(let r=r0;r<=r1;r++){
     for(let c=c0;c<=c1;c++){
       const idx=rowColToIdx(r,c);
@@ -196,7 +193,9 @@ function toggleCell(idx){
 
 function idxFromClientXY(x,y){
   const rect=grid.getBoundingClientRect();
-  const gx=Math.floor((x-rect.left)/CELL), gy=Math.floor((y-rect.top)/CELL);
+  // compute cell size from DOM
+  const { w:CW, h:CH } = getCellSize();
+  const gx=Math.floor((x-rect.left)/CW), gy=Math.floor((y-rect.top)/CH);
   if (gx<0||gy<0||gx>=N||gy>=N) return -1;
   return gy*N + gx;
 }
@@ -216,7 +215,7 @@ window.addEventListener('mousemove',(e)=>{
 window.addEventListener('mouseup',()=>{
   if (isDragging){ suppressNextClick=movedDuringDrag; }
   isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1;
-  // keep overlay a bit if was blocked; it will auto-hide via TTL
+  // overlay auto-hides via TTL
 });
 
 grid.addEventListener('click',(e)=>{
@@ -252,12 +251,10 @@ buyBtn.addEventListener('click', async ()=>{
   const want = Array.from(selected);
   try{
     const got = await reserve(want);
-    // if conflict/partial → reject and flash red overlay around current selection
     if ((got.conflicts && got.conflicts.length>0) || (got.locked && got.locked.length !== want.length)){
-      const selRect = rectFromSelected();
-      if (selRect) showInvalidRect(selRect.r0, selRect.c0, selRect.r1, selRect.c1, 1200);
-      clearSelection();
-      paintAll();
+      const rect = rectFromIndices(want);
+      if (rect) showInvalidRect(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
+      clearSelection(); paintAll();
       return;
     }
     clearSelection();
@@ -283,8 +280,8 @@ form.addEventListener('submit', async (e)=>{
     });
     const res = await r.json();
     if (r.status===409 && res.taken){
-      const selRect = rectFromSelected();
-      if (selRect) showInvalidRect(selRect.r0, selRect.c0, selRect.r1, selRect.c1, 1200);
+      const rect = rectFromIndices(blocks);
+      if (rect) showInvalidRect(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
       clearSelection(); paintAll();
       return;
     }
@@ -299,10 +296,10 @@ form.addEventListener('submit', async (e)=>{
   }
 });
 
-function rectFromSelected(){
-  if (selected.size===0) return null;
+function rectFromIndices(arr){
+  if (!arr || !arr.length) return null;
   let r0=999, c0=999, r1=-1, c1=-1;
-  for (const idx of selected){
+  for (const idx of arr){
     const r=Math.floor(idx/N), c=idx%N;
     if (r<r0) r0=r; if (c<c0) c0=c; if (r>r1) r1=r; if (c>c1) c1=c;
   }
@@ -324,3 +321,7 @@ async function loadStatus(){
   try{ const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); const s=await r.json(); if(s&&s.ok){ sold=s.sold||{}; locks=s.locks||{}; } }catch{}
 }
 (async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
+
+// Debug marker to verify correct file is loaded
+window.__hasForbiddenIconOverlay = true;
+console.log('app.js: forbidden icon overlay patch loaded');
