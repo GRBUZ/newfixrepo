@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Influencers Wall — Basic (with reserves)</title>
-  <link rel="stylesheet" href="css/style.css?v=3" />
+  <title>Influencers Wall — Modal update</title>
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
@@ -14,7 +14,7 @@
     </div>
     <div class="meta">
       <div id="priceLine" class="price">1 pixel = $1.00</div>
-      <div id="pixelsLeft" class="left">1,000,000 pixels left</div>
+      <div id="pixelsLeft" class="left">1 000 000 pixels left</div>
     </div>
     <div class="actions">
       <button id="buyBtn" class="btn primary" disabled>Buy Pixels</button>
@@ -25,17 +25,21 @@
     <div id="grid" class="grid" aria-label="pixel grid"></div>
   </main>
 
-  <!-- Modal (no image upload) -->
+  <!-- Modal (updated header + fields) -->
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="backdrop" data-close></div>
     <div class="panel">
-      <div class="header">
-        <h2>Buy Pixels</h2>
+      <div class="header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <h2 style="margin:0;">Buy Pixels</h2>
+        <div id="modalStats" style="font-size:13px;color:#555;"></div>
         <button class="close" title="Close" data-close>&times;</button>
       </div>
       <form id="form" class="body">
-        <label>Display name / Pseudo
+        <label>Pseudo (Display name)
           <input id="name" name="name" placeholder="@yourname" maxlength="40" required />
+        </label>
+        <label>Email
+          <input id="email" name="email" type="email" placeholder="you@example.com" required />
         </label>
         <label>Profile URL
           <input id="link" name="linkUrl" placeholder="https://instagram.com/your-handle" required />
@@ -53,6 +57,6 @@
   </footer>
 
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
-  <script src="js/app.js?v=3"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
