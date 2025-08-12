@@ -1,7 +1,8 @@
-// No-holes selection patch
-// - Prevents selecting rectangles that include sold/reserved cells
-// - On reserve(), if any conflicts, the whole selection is rejected
-// - Keeps: drag suppression, modal summary, formatting, email field
+// No-holes selection + red highlight (no alert)
+// - Reject rectangles that include SOLD/RESERVED cells
+// - Show a red overlay rectangle instead of alert
+// - On /reserve conflicts or partial lock, flash the same overlay
+// - Keeps: drag suppression, modal summary, required fields
 
 const N = 100;
 const CELL = 10;
@@ -31,7 +32,33 @@ let selected = new Set();
 
 // drag state
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
-let blockedDuringDrag = false; // true if current rectangle crosses a sold/reserved cell
+let blockedDuringDrag = false;
+let blockedRect = null; // {r0,c0,r1,c1}
+
+// ----- invalid overlay -----
+const invalidEl = document.createElement('div');
+invalidEl.id = 'invalidRect';
+invalidEl.style.position = 'absolute';
+invalidEl.style.border = '2px solid #ef4444';
+invalidEl.style.background = 'rgba(239,68,68,0.08)';
+invalidEl.style.pointerEvents = 'none';
+invalidEl.style.display = 'none';
+invalidEl.style.zIndex = '5';
+grid.appendChild(invalidEl);
+
+function showInvalidRect(r0,c0,r1,c1, ttl=900){
+  const left = c0*CELL, top = r0*CELL;
+  const w = (c1-c0+1)*CELL, h = (r1-r0+1)*CELL;
+  invalidEl.style.left = left+'px';
+  invalidEl.style.top = top+'px';
+  invalidEl.style.width = w+'px';
+  invalidEl.style.height = h+'px';
+  invalidEl.style.display = 'block';
+  if (ttl>0){
+    const t = setTimeout(()=>{ invalidEl.style.display='none'; }, ttl);
+  }
+}
+function hideInvalidRect(){ invalidEl.style.display='none'; }
 
 (function build(){
   const frag=document.createDocumentFragment();
@@ -57,7 +84,6 @@ function paintCell(idx){
   d.classList.toggle('pending', !!reservedByOther);
   d.classList.toggle('sel', selected.has(idx));
 
-  // image overlay if present
   if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)) {
     const [r,c]=idxToRowCol(idx);
     const offX=(c - s.rect.x)*CELL, offY=(r - s.rect.y)*CELL;
@@ -103,13 +129,12 @@ function clearSelection(){
   refreshTopbar();
 }
 
-// Rectangle selection that rejects any area containing blocked cells
 function selectRect(aIdx,bIdx){
   const [ar,ac]=idxToRowCol(aIdx), [br,bc]=idxToRowCol(bIdx);
   const r0=Math.min(ar,br), r1=Math.max(ar,br), c0=Math.min(ac,bc), c1=Math.max(ac,bc);
 
-  // First pass: detect any blocked cell inside rect
-  blockedDuringDrag = false;
+  // detect blocked cells
+  blockedDuringDrag = false; blockedRect = {r0,c0,r1,c1};
   for(let r=r0;r<=r1;r++){
     for(let c=c0;c<=c1;c++){
       const idx=rowColToIdx(r,c);
@@ -119,13 +144,12 @@ function selectRect(aIdx,bIdx){
   }
 
   if (blockedDuringDrag){
-    // Reject the whole rectangle (no partials)
     clearSelection();
-    refreshTopbar();
+    showInvalidRect(r0,c0,r1,c1, 900);
     return;
   }
 
-  // Accept the rectangle → build selection
+  hideInvalidRect();
   clearSelection();
   for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
     const idx=rowColToIdx(r,c);
@@ -163,12 +187,11 @@ window.addEventListener('mousemove',(e)=>{
   selectRect(dragStartIdx, idx);
 });
 window.addEventListener('mouseup',()=>{
-  if (isDragging && blockedDuringDrag){
-    alert('Your rectangle includes blocks that are already SOLD or RESERVED. Please select a free area.');
-  }
   if (isDragging){ suppressNextClick=movedDuringDrag; }
-  isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1; blockedDuringDrag=false;
+  isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1;
+  // keep overlay a bit if was blocked; it will auto-hide via TTL
 });
+
 grid.addEventListener('click',(e)=>{
   if(suppressNextClick){ suppressNextClick=false; return; }
   if(isDragging) return;
@@ -202,18 +225,19 @@ buyBtn.addEventListener('click', async ()=>{
   const want = Array.from(selected);
   try{
     const got = await reserve(want);
-    // Reject if any conflict or partial locking (no-holes policy)
+    // if conflict/partial → reject and flash red overlay around current selection
     if ((got.conflicts && got.conflicts.length>0) || (got.locked && got.locked.length !== want.length)){
+      const selRect = rectFromSelected();
+      if (selRect) showInvalidRect(selRect.r0, selRect.c0, selRect.r1, selRect.c1, 1200);
       clearSelection();
       paintAll();
-      alert('Some blocks in your selection are SOLD or RESERVED. Please pick a free rectangle.');
       return;
     }
-    // All good → mark selection from server-locked set (should match want)
     clearSelection();
     for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
     openModal();
   }catch(e){
+    // network/server error — keep alert to signal a real failure
     alert('Reservation failed: ' + (e?.message || e));
   }
 });
@@ -223,7 +247,7 @@ form.addEventListener('submit', async (e)=>{
   const linkUrl = linkInput.value.trim();
   const name    = nameInput.value.trim();
   const email   = emailInput.value.trim();
-  if(!linkUrl || !name || !email){ alert('Please fill Pseudo, Email and Profile URL.'); return; }
+  if(!linkUrl || !name || !email){ return; } // fields are required; rely on browser validation
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
     const blocks = Array.from(selected);
@@ -233,8 +257,9 @@ form.addEventListener('submit', async (e)=>{
     });
     const res = await r.json();
     if (r.status===409 && res.taken){
+      const selRect = rectFromSelected();
+      if (selRect) showInvalidRect(selRect.r0, selRect.c0, selRect.r1, selRect.c1, 1200);
       clearSelection(); paintAll();
-      alert('Some blocks were taken meanwhile. Please reselect.');
       return;
     }
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
@@ -247,6 +272,16 @@ form.addEventListener('submit', async (e)=>{
     confirmBtn.disabled=false; confirmBtn.textContent='Confirm';
   }
 });
+
+function rectFromSelected(){
+  if (selected.size===0) return null;
+  let r0=999, c0=999, r1=-1, c1=-1;
+  for (const idx of selected){
+    const r=Math.floor(idx/N), c=idx%N;
+    if (r<r0) r0=r; if (c<c0) c0=c; if (r>r1) r1=r; if (c>c1) c1=c;
+  }
+  return { r0,c0,r1,c1 };
+}
 
 async function reserve(indices){
   const r=await fetch('/.netlify/functions/reserve',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks: indices }) });
