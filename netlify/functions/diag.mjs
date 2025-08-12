@@ -1,36 +1,25 @@
-// Functions v2 ESM
+// Functions v2 (ESM) – diag using GitHub API (no deps)
 export default async (req, context) => {
-  const headers = {'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*'};
   try {
-    const env = context.env || process.env;
-    const repo = env.GH_REPO;
-    const token = env.GH_TOKEN;
-    const branch = env.GH_BRANCH || 'main';
-    const path = env.PATH_JSON || 'data/state.json';
-    const info = {
-      node: process.version,
-      repoSet: !!repo,
-      tokenSet: !!token,
-      branch,
-      path
-    };
+    const repo = process.env.GH_REPO;
+    const token = process.env.GH_TOKEN;
+    const branch = process.env.GH_BRANCH || 'main';
+    const path = process.env.PATH_JSON || 'data/state.json';
     if (!repo || !token) {
-      return new Response(JSON.stringify({ ok:false, error:'ENV_MISSING', message:'Set GH_REPO and GH_TOKEN in Environment variables.', info }), { status:500, headers });
+      return new Response(JSON.stringify({ ok:false, error:'ENV_MISSING', repoSet:!!repo, tokenSet:!!token }), { status: 500, headers: { 'content-type':'application/json' } });
     }
-    // Try a GET to see if we can read (404 is fine)
     const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
-    const r = await fetch(url, {
-      headers: {
-        'authorization': `Bearer ${token}`,
-        'accept': 'application/vnd.github+json',
-        'user-agent': 'netlify-fn-diag'
-      }
-    });
-    const status = r.status;
-    let body = null;
-    try { body = await r.json(); } catch {}
-    return new Response(JSON.stringify({ ok:true, readable: status===200, status, body }), { status:200, headers });
+    const r = await fetch(url, { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'iw-netlify-func' } });
+    const info = { status: r.status, repo, branch, path };
+    if (r.status === 404) {
+      return new Response(JSON.stringify({ ok:true, readable:false, ...info }), { headers: { 'content-type':'application/json' } });
+    }
+    if (!r.ok) {
+      const text = await r.text();
+      return new Response(JSON.stringify({ ok:false, error:'GITHUB_READ_FAILED', ...info, body:text }), { status: r.status, headers: { 'content-type':'application/json' } });
+    }
+    return new Response(JSON.stringify({ ok:true, readable:true, ...info }), { headers: { 'content-type':'application/json' } });
   } catch (e) {
-    return new Response(JSON.stringify({ ok:false, error:'SERVER_ERROR', message: String(e) }), { status:500, headers });
+    return new Response(JSON.stringify({ ok:false, error:'SERVER_ERROR', message: String(e) }), { status: 500, headers: { 'content-type':'application/json' } });
   }
 };
