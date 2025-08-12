@@ -1,7 +1,7 @@
+# Netlify Functions v2 (ESM)
 [build]
   command = ""
   publish = "."
 
 [functions]
   directory = "netlify/functions"
-  node_bundler = "esbuild"

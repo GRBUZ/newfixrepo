@@ -13,6 +13,7 @@ main{display:flex;justify-content:center;padding:16px}
 
 .cell{width:10px;height:10px;background:#fff;border:1px solid #f0f0f0}
 .cell.sold{background:#ddd;border-color:#ddd}
+.cell.pending{background:#fff6cc;border-color:#ffd66b}
 .cell.sel{outline:1px solid #8b5cf6;background:#f5f3ff}
 
 .modal.hidden{display:none}

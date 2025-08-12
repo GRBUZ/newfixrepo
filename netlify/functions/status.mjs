@@ -1,33 +1,94 @@
-// Functions v2 (ESM) – status: reads state.json from GitHub (no deps)
-export default async (req, context) => {
+
+const GH_REPO   = process.env.GH_REPO;
+const GH_TOKEN  = process.env.GH_TOKEN;
+const GH_BRANCH = process.env.GH_BRANCH || 'main';
+const PATH_JSON = process.env.PATH_JSON || 'data/state.json';
+
+const API_BASE = 'https://api.github.com';
+
+function jres(status, obj) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+  });
+}
+
+async function ghGetFile(path) {
+  const url = `${API_BASE}/repos/${GH_REPO}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(GH_BRANCH)}`;
+  const r = await fetch(url, {
+    headers: {
+      'Authorization': `token ${GH_TOKEN}`,
+      'User-Agent': 'netlify-fn',
+      'Accept': 'application/vnd.github+json'
+    }
+  });
+  if (r.status === 404) return { sha: null, content: null, status: 404 };
+  if (!r.ok) throw new Error(`GITHUB_GET_FAILED ${r.status}`);
+  const data = await r.json();
+  const buf = Buffer.from(data.content, data.encoding || 'base64');
+  return { sha: data.sha, content: buf.toString('utf8'), status: 200 };
+}
+
+async function ghPutFile(path, content, sha, message) {
+  const url = `${API_BASE}/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`;
+  const body = {
+    message,
+    content: Buffer.from(content, 'utf8').toString('base64'),
+    branch: GH_BRANCH
+  };
+  if (sha) body.sha = sha;
+  const r = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `token ${GH_TOKEN}`,
+      'User-Agent': 'netlify-fn',
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`GITHUB_PUT_FAILED ${r.status}`);
+  const data = await r.json();
+  return data.content.sha;
+}
+
+function parseState(raw) {
+  if (!raw) return { sold:{}, locks:{} };
   try {
-    const repo = process.env.GH_REPO;
-    const token = process.env.GH_TOKEN;
-    const branch = process.env.GH_BRANCH || 'main';
-    const path = process.env.PATH_JSON || 'data/state.json';
-    if (!repo || !token) {
-      return new Response(JSON.stringify({ ok:false, error:'ENV_MISSING' }), { status: 500, headers: { 'content-type':'application/json' } });
+    const obj = JSON.parse(raw);
+    // Back-compat: if previous format was {artCells:{...}}
+    if (obj.artCells && !obj.sold) {
+      const sold = {};
+      for (const [k,v] of Object.entries(obj.artCells)) {
+        sold[k] = { name: v.name || v.n || '', linkUrl: v.linkUrl || v.u || '', ts: v.ts || Date.now() };
+      }
+      return { sold, locks: obj.locks || {} };
     }
-    const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
-    const r = await fetch(url, { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'iw-netlify-func' } });
-    if (r.status === 404) {
-      // No state yet
-      return new Response(JSON.stringify({ ok:true, artCells:{}, price:1.00, pixelsSold:0, pixelsLeft:1_000_000 }), { headers: { 'content-type':'application/json', 'cache-control':'no-store' } });
-    }
-    if (!r.ok) {
-      const text = await r.text();
-      return new Response(JSON.stringify({ ok:false, error:'GITHUB_READ_FAILED', status:r.status, body:text }), { status: r.status, headers: { 'content-type':'application/json' } });
-    }
-    const j = await r.json();
-    const content = j.content ? Buffer.from(j.content, 'base64').toString('utf-8') : '{}';
-    const state = JSON.parse(content || '{}');
-    const artCells = state.artCells || {};
-    const blocksSold = Object.keys(artCells).length;
-    const pixelsSold = blocksSold * 100;
-    const price = 1 + Math.floor(pixelsSold / 1000) * 0.01;
-    const left = 1_000_000 - pixelsSold;
-    return new Response(JSON.stringify({ ok:true, artCells, price, pixelsSold, pixelsLeft:left }), { headers: { 'content-type':'application/json', 'cache-control':'no-store' } });
+    if (!obj.sold) obj.sold = {};
+    if (!obj.locks) obj.locks = {};
+    return obj;
+  } catch {
+    return { sold:{}, locks:{} };
+  }
+}
+
+function pruneLocks(locks) {
+  const now = Date.now();
+  const out = {};
+  for (const [k,v] of Object.entries(locks || {})) {
+    if (v && typeof v.until === 'number' && v.until > now) out[k] = v;
+  }
+  return out;
+}
+
+export default async () => {
+  try {
+    const got = await ghGetFile(PATH_JSON);
+    if (got.status === 404) return jres(200, { ok:true, sold:{}, locks:{} });
+    const st = parseState(got.content);
+    st.locks = pruneLocks(st.locks);
+    return jres(200, { ok:true, sold: st.sold, locks: st.locks });
   } catch (e) {
-    return new Response(JSON.stringify({ ok:false, error:'SERVER_ERROR', message: String(e) }), { status: 500, headers: { 'content-type':'application/json' } });
+    return jres(500, { ok:false, error:'STATUS_FAILED', message: String(e) });
   }
 };

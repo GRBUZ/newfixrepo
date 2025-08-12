@@ -81,74 +81,66 @@ function pruneLocks(locks) {
   return out;
 }
 
+const TTL_MS = 3 * 60 * 1000;
+
 export default async (req) => {
   try {
     if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
     const body = await req.json();
-    const uid    = (body.uid || '').toString();
-    const linkUrl= (body.linkUrl || '').toString();
-    const name   = (body.name || '').toString();
+    const uid = (body.uid || '').toString();
     const blocks = Array.isArray(body.blocks) ? body.blocks.map(n=>parseInt(n,10)).filter(n=>Number.isInteger(n)&&n>=0&&n<10000) : [];
-    if (!uid || !linkUrl || !name || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
+    if (!uid || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
 
-    // Load current
+    // Read current state
     let got = await ghGetFile(PATH_JSON);
     let sha = got.sha;
     let st = parseState(got.content);
     st.locks = pruneLocks(st.locks);
 
-    const taken = [];
-    const allowed = [];
+    // Build lock set
+    const now = Date.now();
+    const until = now + TTL_MS;
+    const locked = [];
+    const conflicts = [];
+
     for (const b of blocks) {
       const key = String(b);
-      if (st.sold[key]) { taken.push(b); continue; }
+      if (st.sold[key]) { conflicts.push(b); continue; }
       const l = st.locks[key];
-      if (l && l.until > Date.now() && l.uid !== uid) { taken.push(b); continue; } // locked by someone else
-      allowed.push(b);
+      if (l && l.until > now && l.uid !== uid) { conflicts.push(b); continue; }
+      st.locks[key] = { uid, until };
+      locked.push(b);
     }
 
-    if (allowed.length === 0) {
-      return jres(taken.length?409:400, { ok:false, error:'NO_BLOCKS_AVAILABLE', taken });
-    }
-
-    for (const b of allowed) {
-      const key = String(b);
-      st.sold[key] = { name, linkUrl, ts: Date.now() };
-      // remove my lock if exists
-      if (st.locks[key] && st.locks[key].uid === uid) delete st.locks[key];
-    }
-
+    // Commit only if something changed
     const newContent = JSON.stringify(st, null, 2);
+    let newSha;
     try {
-      const newSha = await ghPutFile(PATH_JSON, newContent, sha, `finalize ${allowed.length} by ${uid}`);
+      newSha = await ghPutFile(PATH_JSON, newContent, sha, `reserve ${locked.length} blocks by ${uid}`);
     } catch (e) {
-      // Retry once on 409 conflict
+      // Retry once on conflict (sha changed)
       if (String(e).includes('GITHUB_PUT_FAILED 409')) {
         got = await ghGetFile(PATH_JSON);
         sha = got.sha; st = parseState(got.content); st.locks = pruneLocks(st.locks);
-        const taken2 = [];
-        const allowed2 = [];
+        // recompute with fresh state (single pass)
+        const locked2 = [];
+        const now2 = Date.now(); const until2 = now2 + TTL_MS;
         for (const b of blocks) {
           const key = String(b);
-          if (st.sold[key]) { taken2.push(b); continue; }
+          if (st.sold[key]) continue;
           const l = st.locks[key];
-          if (l && l.until > Date.now() && l.uid !== uid) { taken2.push(b); continue; }
-          allowed2.push(b);
-        }
-        if (allowed2.length === 0) return jres(409, { ok:false, error:'SOME_BLOCKS_TAKEN', taken: taken2 });
-        for (const b of allowed2) {
-          const key = String(b);
-          st.sold[key] = { name, linkUrl, ts: Date.now() };
-          if (st.locks[key] && st.locks[key].uid === uid) delete st.locks[key];
+          if (l && l.until > now2 && l.uid !== uid) continue;
+          st.locks[key] = { uid, until: until2 };
+          locked2.push(b);
         }
         const content2 = JSON.stringify(st, null, 2);
-        const newSha = await ghPutFile(PATH_JSON, content2, got.sha, `finalize(retry) ${allowed2.length} by ${uid}`);
-        return jres(200, { ok:true, sold: allowed2, taken: taken2, soldMap: st.sold });
+        newSha = await ghPutFile(PATH_JSON, content2, got.sha, `reserve(retry) ${locked2.length} by ${uid}`);
+        return jres(200, { ok:true, locked: locked2, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
       }
       throw e;
     }
-    return jres(200, { ok:true, sold: allowed, taken, soldMap: st.sold });
+    return jres(200, { ok:true, locked, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
   } catch (e) {
-    return jres(500, { ok:false, error:'FINALIZE_FAILED', message: String(e) });
+    return jres(500, { ok:false, error:'RESERVE_FAILED', message: String(e) });
   }
 };

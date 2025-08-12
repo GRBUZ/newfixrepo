@@ -85,70 +85,39 @@ export default async (req) => {
   try {
     if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
     const body = await req.json();
-    const uid    = (body.uid || '').toString();
-    const linkUrl= (body.linkUrl || '').toString();
-    const name   = (body.name || '').toString();
+    const uid = (body.uid || '').toString();
     const blocks = Array.isArray(body.blocks) ? body.blocks.map(n=>parseInt(n,10)).filter(n=>Number.isInteger(n)&&n>=0&&n<10000) : [];
-    if (!uid || !linkUrl || !name || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
+    if (!uid || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
 
-    // Load current
     let got = await ghGetFile(PATH_JSON);
     let sha = got.sha;
     let st = parseState(got.content);
     st.locks = pruneLocks(st.locks);
 
-    const taken = [];
-    const allowed = [];
+    let changed = false;
     for (const b of blocks) {
       const key = String(b);
-      if (st.sold[key]) { taken.push(b); continue; }
       const l = st.locks[key];
-      if (l && l.until > Date.now() && l.uid !== uid) { taken.push(b); continue; } // locked by someone else
-      allowed.push(b);
+      if (l && l.uid === uid) { delete st.locks[key]; changed = true; }
     }
 
-    if (allowed.length === 0) {
-      return jres(taken.length?409:400, { ok:false, error:'NO_BLOCKS_AVAILABLE', taken });
-    }
-
-    for (const b of allowed) {
-      const key = String(b);
-      st.sold[key] = { name, linkUrl, ts: Date.now() };
-      // remove my lock if exists
-      if (st.locks[key] && st.locks[key].uid === uid) delete st.locks[key];
-    }
+    if (!changed) return jres(200, { ok:true, locks: st.locks });
 
     const newContent = JSON.stringify(st, null, 2);
     try {
-      const newSha = await ghPutFile(PATH_JSON, newContent, sha, `finalize ${allowed.length} by ${uid}`);
+      const newSha = await ghPutFile(PATH_JSON, newContent, sha, `unlock ${blocks.length} by ${uid}`);
+      return jres(200, { ok:true, locks: st.locks });
     } catch (e) {
-      // Retry once on 409 conflict
       if (String(e).includes('GITHUB_PUT_FAILED 409')) {
+        // Refetch and return current locks; client will refresh via /status soon
         got = await ghGetFile(PATH_JSON);
-        sha = got.sha; st = parseState(got.content); st.locks = pruneLocks(st.locks);
-        const taken2 = [];
-        const allowed2 = [];
-        for (const b of blocks) {
-          const key = String(b);
-          if (st.sold[key]) { taken2.push(b); continue; }
-          const l = st.locks[key];
-          if (l && l.until > Date.now() && l.uid !== uid) { taken2.push(b); continue; }
-          allowed2.push(b);
-        }
-        if (allowed2.length === 0) return jres(409, { ok:false, error:'SOME_BLOCKS_TAKEN', taken: taken2 });
-        for (const b of allowed2) {
-          const key = String(b);
-          st.sold[key] = { name, linkUrl, ts: Date.now() };
-          if (st.locks[key] && st.locks[key].uid === uid) delete st.locks[key];
-        }
-        const content2 = JSON.stringify(st, null, 2);
-        const newSha = await ghPutFile(PATH_JSON, content2, got.sha, `finalize(retry) ${allowed2.length} by ${uid}`);
-        return jres(200, { ok:true, sold: allowed2, taken: taken2, soldMap: st.sold });
+        const st2 = parseState(got.content);
+        st2.locks = pruneLocks(st2.locks);
+        return jres(200, { ok:true, locks: st2.locks });
       }
       throw e;
     }
-    return jres(200, { ok:true, sold: allowed, taken, soldMap: st.sold });
   } catch (e) {
-    return jres(500, { ok:false, error:'FINALIZE_FAILED', message: String(e) });
+    return jres(500, { ok:false, error:'UNLOCK_FAILED', message: String(e) });
   }
 };

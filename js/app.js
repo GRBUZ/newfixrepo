@@ -1,8 +1,9 @@
-// Basic Influencers Wall (no images).
-// On confirm, store { name, linkUrl } for selected blocks; grid shows them as SOLD (grey).
+// Influencers Wall – GitHub storage + server-backed reservations (locks)
+// Assumes Netlify Functions: /status, /reserve, /unlock, /finalize
+// No image upload: only name + linkUrl; images can be added manually later.
 
-const N = 100;                 // 100x100
-const CELL = 10;               // px
+const N = 100;
+const CELL = 10;
 const TOTAL_PIXELS = 1_000_000;
 
 const grid = document.getElementById('grid');
@@ -16,16 +17,22 @@ const linkInput = document.getElementById('link');
 const nameInput = document.getElementById('name');
 const confirmBtn = document.getElementById('confirm');
 
-// State
-let sold = {};                 // { idx: { linkUrl, name } }
-let selected = new Set();      // current selection (indices)
+const uid = (() => {
+  const k = 'iw_uid';
+  let v = localStorage.getItem(k);
+  if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); localStorage.setItem(k, v); }
+  return v;
+})();
+
+let sold = {};   // { idx: { name, linkUrl, ts } }
+let locks = {};  // { idx: { uid, until } }
+let selected = new Set();
 let isDragging = false;
 let dragStartIdx = -1;
 
-// Build grid
 (function build(){
   const frag = document.createDocumentFragment();
-  for (let i = 0; i < N*N; i++) {
+  for (let i=0;i<N*N;i++){
     const d = document.createElement('div');
     d.className = 'cell';
     d.dataset.idx = i;
@@ -34,22 +41,24 @@ let dragStartIdx = -1;
   grid.appendChild(frag);
 })();
 
-function idxToRowCol(idx){ return [Math.floor(idx / N), idx % N]; }
+function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
 function rowColToIdx(r,c){ return r*N + c; }
 
-function paintCell(idx) {
+function paintCell(idx){
   const d = grid.children[idx];
   const s = sold[idx];
+  const l = locks[idx];
+  const reserved = l && l.until > Date.now() && (!s);
+  // If reserved by someone else, show pending
+  const reservedByOther = reserved && l.uid !== uid;
+
   d.classList.toggle('sold', !!s);
+  d.classList.toggle('pending', !!reservedByOther);
   d.classList.toggle('sel', selected.has(idx));
+
   if (s) {
     d.title = (s.name ? s.name + ' · ' : '') + (s.linkUrl || '');
-    if (!d.firstChild) {
-      const a = document.createElement('a');
-      a.className = 'region-link';
-      a.target = '_blank';
-      d.appendChild(a);
-    }
+    if (!d.firstChild) { const a = document.createElement('a'); a.className='region-link'; a.target='_blank'; d.appendChild(a); }
     d.firstChild.href = s.linkUrl || '#';
   } else {
     d.title = '';
@@ -57,12 +66,9 @@ function paintCell(idx) {
   }
 }
 
-function paintAll() {
-  for (let i = 0; i < N*N; i++) paintCell(i);
-  refreshTopbar();
-}
+function paintAll(){ for (let i=0;i<N*N;i++) paintCell(i); refreshTopbar(); }
 
-function refreshTopbar() {
+function refreshTopbar(){
   const blocksSold = Object.keys(sold).length;
   const pixelsSold = blocksSold * 100;
   const price = 1 + Math.floor(pixelsSold / 1000) * 0.01;
@@ -72,144 +78,167 @@ function refreshTopbar() {
   buyBtn.disabled = selected.size === 0;
 }
 
-// Selection
-function clearSelection() {
-  for (const i of selected) {
-    const d = grid.children[i];
-    d.classList.remove('sel');
-  }
+function clearSelection(){
+  for (const i of selected) grid.children[i].classList.remove('sel');
   selected.clear();
   refreshTopbar();
 }
 
-function selectRect(aIdx, bIdx) {
+function selectRect(aIdx,bIdx){
   clearSelection();
-  const [ar, ac] = idxToRowCol(aIdx);
-  const [br, bc] = idxToRowCol(bIdx);
-  const r0 = Math.min(ar, br), r1 = Math.max(ar, br);
-  const c0 = Math.min(ac, bc), c1 = Math.max(ac, bc);
-  for (let r = r0; r <= r1; r++) {
-    for (let c = c0; c <= c1; c++) {
-      const idx = rowColToIdx(r,c);
-      if (!sold[idx]) selected.add(idx);
-    }
+  const [ar,ac]=idxToRowCol(aIdx), [br,bc]=idxToRowCol(bIdx);
+  const r0=Math.min(ar,br), r1=Math.max(ar,br), c0=Math.min(ac,bc), c1=Math.max(ac,bc);
+  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
+    const idx=rowColToIdx(r,c);
+    if (sold[idx]) continue;
+    const l = locks[idx];
+    const reservedByOther = l && l.until > Date.now() && l.uid !== uid;
+    if (!reservedByOther) selected.add(idx);
   }
   for (const i of selected) grid.children[i].classList.add('sel');
   refreshTopbar();
 }
 
-function toggleCell(idx) {
+function toggleCell(idx){
   if (sold[idx]) return;
+  const l = locks[idx];
+  const reservedByOther = l && l.until > Date.now() && l.uid !== uid;
+  if (reservedByOther) return;
   const d = grid.children[idx];
   if (selected.has(idx)) { selected.delete(idx); d.classList.remove('sel'); }
   else { selected.add(idx); d.classList.add('sel'); }
   refreshTopbar();
 }
 
-// Pointer math
-function idxFromClientXY(x,y) {
-  const rect = grid.getBoundingClientRect();
-  const gx = Math.floor((x - rect.left) / 10);
-  const gy = Math.floor((y - rect.top) / 10);
-  if (gx < 0 || gy < 0 || gx >= N || gy >= N) return -1;
-  return gy * N + gx;
+function idxFromClientXY(x,y){
+  const rect=grid.getBoundingClientRect();
+  const gx=Math.floor((x-rect.left)/CELL), gy=Math.floor((y-rect.top)/CELL);
+  if (gx<0||gy<0||gx>=N||gy>=N) return -1;
+  return gy*N + gx;
 }
 
-// Delegated events
-grid.addEventListener('mousedown', (e) => {
+grid.addEventListener('mousedown', (e)=>{
   const idx = idxFromClientXY(e.clientX, e.clientY);
-  if (idx < 0) return;
-  isDragging = true;
-  dragStartIdx = idx;
-  selectRect(idx, idx);
-  e.preventDefault();
+  if (idx<0) return;
+  isDragging = true; dragStartIdx = idx; selectRect(idx, idx); e.preventDefault();
 });
-window.addEventListener('mousemove', (e) => {
+window.addEventListener('mousemove', (e)=>{
   if (!isDragging) return;
   const idx = idxFromClientXY(e.clientX, e.clientY);
-  if (idx < 0) return;
+  if (idx<0) return;
   selectRect(dragStartIdx, idx);
 });
-window.addEventListener('mouseup', () => { isDragging = false; dragStartIdx = -1; });
-
-// Click toggle (unit selection)
-grid.addEventListener('click', (e) => {
+window.addEventListener('mouseup', ()=>{ isDragging=false; dragStartIdx=-1; });
+grid.addEventListener('click', (e)=>{
   if (isDragging) return;
   const idx = idxFromClientXY(e.clientX, e.clientY);
-  if (idx < 0) return;
+  if (idx<0) return;
   toggleCell(idx);
 });
 
-// ESC clears
-window.addEventListener('keydown', (e) => {
+// ESC clears & unlocks if needed (when modal is open and we reserved)
+window.addEventListener('keydown', async (e)=>{
   if (e.key === 'Escape') {
+    if (!modal.classList.contains('hidden') && selected.size) {
+      try { await unlock(Array.from(selected)); } catch {}
+    }
     closeModal();
     clearSelection();
   }
 });
 
-// Modal open/close
 function openModal(){ modal.classList.remove('hidden'); }
 function closeModal(){ modal.classList.add('hidden'); }
 
-document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => {
+document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
+  if (selected.size) { try { await unlock(Array.from(selected)); } catch {} }
   closeModal();
   clearSelection();
 }));
 
-buyBtn.addEventListener('click', () => {
-  if (selected.size === 0) return;
+buyBtn.addEventListener('click', async () => {
+  if (!selected.size) return;
+  // Reserve on "Buy" (not on each click) to keep it fast and avoid many commits
+  const want = Array.from(selected);
+  const got = await reserve(want);
+  // Keep only actually locked indices
+  clearSelection();
+  for (const i of got.locked) { selected.add(i); grid.children[i].classList.add('sel'); }
+  if (selected.size === 0) {
+    alert('These blocks were just reserved or sold by someone else. Please pick another area.');
+    return;
+  }
   openModal();
 });
 
-// Finalize (no images)
-form.addEventListener('submit', async (e) => {
+form.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const linkUrl = linkInput.value.trim();
   const name = nameInput.value.trim();
   if (!linkUrl || !name) { alert('Provide display name and profile URL.'); return; }
-  confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…';
-  try {
+  confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
+  try{
     const blocks = Array.from(selected);
     const r = await fetch('/.netlify/functions/finalize', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ linkUrl, name, blocks })
+      method: 'POST', headers: { 'content-type':'application/json' },
+      body: JSON.stringify({ uid, blocks, linkUrl, name })
     });
     const res = await r.json();
-    if (r.status === 409 && res.taken && Array.isArray(res.taken)) {
-      for (const b of res.taken) {
-        const el = grid.children[b];
-        el.classList.remove('sel');
-        selected.delete(b);
-      }
-      alert('Some blocks were already taken and were removed from your selection. Please try again.');
+    if (r.status === 409 && res.taken) {
+      for (const b of res.taken) { const el = grid.children[b]; el.classList.remove('sel'); selected.delete(b); }
+      alert('Some blocks were taken. They were removed from your selection.');
       refreshTopbar();
       return;
     }
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
-    sold = res.artCells || sold;
-    clearSelection();
-    paintAll();
-    closeModal();
-  } catch (err) {
-    alert('Finalize failed: ' + (err && err.message ? err.message : err));
+    sold = res.soldMap || sold;
+    // Clean any of my leftover locks
+    try { await unlock(blocks); } catch {}
+    clearSelection(); paintAll(); closeModal();
+  } catch(err){
+    alert('Finalize failed: ' + (err?.message || err));
   } finally {
-    confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm';
+    confirmBtn.disabled=false; confirmBtn.textContent='Confirm';
   }
 });
 
-// Status polling (light)
+async function reserve(indices){
+  const r = await fetch('/.netlify/functions/reserve', {
+    method: 'POST', headers: { 'content-type':'application/json' },
+    body: JSON.stringify({ uid, blocks: indices })
+  });
+  const res = await r.json();
+  if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
+  // update locks view
+  locks = res.locks || locks;
+  paintAll();
+  return res;
+}
+async function unlock(indices){
+  const r = await fetch('/.netlify/functions/unlock', {
+    method: 'POST', headers: { 'content-type':'application/json' },
+    body: JSON.stringify({ uid, blocks: indices })
+  });
+  const res = await r.json();
+  if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
+  locks = res.locks || locks;
+  paintAll();
+  return res;
+}
+
 async function loadStatus(){
   try {
-    const r = await fetch('/.netlify/functions/status', { cache: 'no-store' });
+    const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
     const s = await r.json();
-    if (s && s.ok && s.artCells) sold = s.artCells;
+    if (s && s.ok) {
+      sold = s.sold || {};
+      locks = s.locks || {};
+    }
   } catch {}
 }
 
 (async function init(){
   await loadStatus();
   paintAll();
-  setInterval(async () => { await loadStatus(); paintAll(); }, 3000);
+  setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500);
 })();
