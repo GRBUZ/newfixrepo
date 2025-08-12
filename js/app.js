@@ -1,6 +1,6 @@
-// No-holes selection + red highlight (no alert)
+// No-holes selection + red highlight + centered forbidden icon
 // - Reject rectangles that include SOLD/RESERVED cells
-// - Show a red overlay rectangle instead of alert
+// - Show a red overlay + a centered "forbidden" icon (circle+slash)
 // - On /reserve conflicts or partial lock, flash the same overlay
 // - Keeps: drag suppression, modal summary, required fields
 
@@ -35,7 +35,7 @@ let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, su
 let blockedDuringDrag = false;
 let blockedRect = null; // {r0,c0,r1,c1}
 
-// ----- invalid overlay -----
+// ----- invalid overlay with icon -----
 const invalidEl = document.createElement('div');
 invalidEl.id = 'invalidRect';
 invalidEl.style.position = 'absolute';
@@ -43,7 +43,31 @@ invalidEl.style.border = '2px solid #ef4444';
 invalidEl.style.background = 'rgba(239,68,68,0.08)';
 invalidEl.style.pointerEvents = 'none';
 invalidEl.style.display = 'none';
-invalidEl.style.zIndex = '5';
+invalidEl.style.zIndex = '6';
+
+// ensure grid is positioning context
+const gridStyle = getComputedStyle(grid);
+if (gridStyle.position === 'static') grid.style.position = 'relative';
+
+// create centered icon (SVG) inside overlay
+const invalidIcon = document.createElement('div');
+invalidIcon.style.position = 'absolute';
+invalidIcon.style.left = '50%';
+invalidIcon.style.top = '50%';
+invalidIcon.style.transform = 'translate(-50%, -50%)';
+invalidIcon.style.pointerEvents = 'none';
+invalidIcon.style.zIndex = '7';
+invalidIcon.innerHTML = `
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <!-- white disc for contrast -->
+    <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle>
+    <!-- red circle -->
+    <circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" stroke-width="2"></circle>
+    <!-- red slash -->
+    <line x1="7" y1="17" x2="17" y2="7" stroke="#ef4444" stroke-width="2" stroke-linecap="round"></line>
+  </svg>
+`;
+invalidEl.appendChild(invalidIcon);
 grid.appendChild(invalidEl);
 
 function showInvalidRect(r0,c0,r1,c1, ttl=900){
@@ -53,10 +77,13 @@ function showInvalidRect(r0,c0,r1,c1, ttl=900){
   invalidEl.style.top = top+'px';
   invalidEl.style.width = w+'px';
   invalidEl.style.height = h+'px';
+  // icon size adaptive to rect size (fits 1-cell too)
+  const size = Math.max(16, Math.min(48, Math.floor(Math.min(w, h) * 0.7)));
+  const svg = invalidIcon.querySelector('svg');
+  svg.style.width = size+'px';
+  svg.style.height = size+'px';
   invalidEl.style.display = 'block';
-  if (ttl>0){
-    const t = setTimeout(()=>{ invalidEl.style.display='none'; }, ttl);
-  }
+  if (ttl>0){ setTimeout(()=>{ invalidEl.style.display='none'; }, ttl); }
 }
 function hideInvalidRect(){ invalidEl.style.display='none'; }
 
@@ -237,7 +264,6 @@ buyBtn.addEventListener('click', async ()=>{
     for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
     openModal();
   }catch(e){
-    // network/server error — keep alert to signal a real failure
     alert('Reservation failed: ' + (e?.message || e));
   }
 });
@@ -247,7 +273,7 @@ form.addEventListener('submit', async (e)=>{
   const linkUrl = linkInput.value.trim();
   const name    = nameInput.value.trim();
   const email   = emailInput.value.trim();
-  if(!linkUrl || !name || !email){ return; } // fields are required; rely on browser validation
+  if(!linkUrl || !name || !email){ return; }
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
     const blocks = Array.from(selected);
