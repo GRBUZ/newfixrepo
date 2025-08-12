@@ -1,4 +1,4 @@
-
+// finalize.mjs — write rect + empty imageUrl for all sold blocks
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
 const GH_BRANCH = process.env.GH_BRANCH || 'main';
@@ -56,14 +56,6 @@ function parseState(raw) {
   if (!raw) return { sold:{}, locks:{} };
   try {
     const obj = JSON.parse(raw);
-    // Back-compat: if previous format was {artCells:{...}}
-    if (obj.artCells && !obj.sold) {
-      const sold = {};
-      for (const [k,v] of Object.entries(obj.artCells)) {
-        sold[k] = { name: v.name || v.n || '', linkUrl: v.linkUrl || v.u || '', ts: v.ts || Date.now() };
-      }
-      return { sold, locks: obj.locks || {} };
-    }
     if (!obj.sold) obj.sold = {};
     if (!obj.locks) obj.locks = {};
     return obj;
@@ -81,6 +73,8 @@ function pruneLocks(locks) {
   return out;
 }
 
+function idxToXY(idx){ const x = idx % 100; const y = Math.floor(idx / 100); return { x, y }; }
+
 export default async (req) => {
   try {
     if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
@@ -97,37 +91,49 @@ export default async (req) => {
     let st = parseState(got.content);
     st.locks = pruneLocks(st.locks);
 
+    // Filter allowed vs taken
     const taken = [];
     const allowed = [];
     for (const b of blocks) {
       const key = String(b);
       if (st.sold[key]) { taken.push(b); continue; }
       const l = st.locks[key];
-      if (l && l.until > Date.now() && l.uid !== uid) { taken.push(b); continue; } // locked by someone else
+      if (l && l.until > Date.now() && l.uid !== uid) { taken.push(b); continue; }
       allowed.push(b);
     }
-
     if (allowed.length === 0) {
       return jres(taken.length?409:400, { ok:false, error:'NO_BLOCKS_AVAILABLE', taken });
     }
 
+    // Compute rect from bounding box of allowed blocks
+    let minX=999, minY=999, maxX=-1, maxY=-1;
+    for (const b of allowed) {
+      const {x,y} = idxToXY(b);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    const rect = { x: minX, y: minY, w: (maxX-minX+1), h: (maxY-minY+1) };
+
+    // Write sold entries with empty imageUrl and computed rect
+    const nowTs = Date.now();
     for (const b of allowed) {
       const key = String(b);
-      st.sold[key] = { name, linkUrl, ts: Date.now() };
-      // remove my lock if exists
+      st.sold[key] = { name, linkUrl, ts: nowTs, imageUrl: "", rect };
       if (st.locks[key] && st.locks[key].uid === uid) delete st.locks[key];
     }
 
     const newContent = JSON.stringify(st, null, 2);
     try {
-      const newSha = await ghPutFile(PATH_JSON, newContent, sha, `finalize ${allowed.length} by ${uid}`);
+      await ghPutFile(PATH_JSON, newContent, sha, `finalize ${allowed.length} by ${uid} (rect + imageUrl placeholder)`);
     } catch (e) {
-      // Retry once on 409 conflict
       if (String(e).includes('GITHUB_PUT_FAILED 409')) {
+        // Retry once on conflict
         got = await ghGetFile(PATH_JSON);
         sha = got.sha; st = parseState(got.content); st.locks = pruneLocks(st.locks);
-        const taken2 = [];
-        const allowed2 = [];
+        // Re-evaluate taken/allowed quickly
+        const taken2 = []; const allowed2 = [];
         for (const b of blocks) {
           const key = String(b);
           if (st.sold[key]) { taken2.push(b); continue; }
@@ -136,18 +142,29 @@ export default async (req) => {
           allowed2.push(b);
         }
         if (allowed2.length === 0) return jres(409, { ok:false, error:'SOME_BLOCKS_TAKEN', taken: taken2 });
+        // Recompute rect
+        let minX2=999, minY2=999, maxX2=-1, maxY2=-1;
+        for (const b of allowed2) {
+          const {x,y} = idxToXY(b);
+          if (x < minX2) minX2 = x;
+          if (y < minY2) minY2 = y;
+          if (x > maxX2) maxX2 = x;
+          if (y > maxY2) maxY2 = y;
+        }
+        const rect2 = { x: minX2, y: minY2, w: (maxX2-minX2+1), h: (maxY2-minY2+1) };
+        const now2 = Date.now();
         for (const b of allowed2) {
           const key = String(b);
-          st.sold[key] = { name, linkUrl, ts: Date.now() };
+          st.sold[key] = { name, linkUrl, ts: now2, imageUrl: "", rect: rect2 };
           if (st.locks[key] && st.locks[key].uid === uid) delete st.locks[key];
         }
         const content2 = JSON.stringify(st, null, 2);
-        const newSha = await ghPutFile(PATH_JSON, content2, got.sha, `finalize(retry) ${allowed2.length} by ${uid}`);
-        return jres(200, { ok:true, sold: allowed2, taken: taken2, soldMap: st.sold });
+        await ghPutFile(PATH_JSON, content2, got.sha, `finalize(retry) ${allowed2.length} by ${uid} (rect + imageUrl placeholder)`);
+        return jres(200, { ok:true, sold: allowed2, taken: taken2, soldMap: st.sold, rect: rect2 });
       }
       throw e;
     }
-    return jres(200, { ok:true, sold: allowed, taken, soldMap: st.sold });
+    return jres(200, { ok:true, sold: allowed, taken, soldMap: st.sold, rect });
   } catch (e) {
     return jres(500, { ok:false, error:'FINALIZE_FAILED', message: String(e) });
   }
