@@ -210,11 +210,4 @@ main{display:flex;justify-content:center;padding:16px}
 .brand .tagline{
   margin-top: 4px; /* optionnel: espace réduit */
 }
-/* (optionnel) faire passer .brand sur toute la largeur de la barre haute */
-.hero-top{
-  grid-auto-rows: min-content;
-}
-.brand{
-  grid-column: 1 / -1;
-}
 
