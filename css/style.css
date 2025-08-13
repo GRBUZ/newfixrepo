@@ -53,7 +53,7 @@ main{display:flex;justify-content:center;padding:16px}
   color: #fff;
 }
 .container{
-  max-width: 1100px;
+  max-width: 900px;
   margin: 0 auto;
   padding: 0 16px;
 }
