@@ -67,7 +67,7 @@ main{display:flex;justify-content:center;padding:16px}
 }
 .brand h1{
   margin: 0;
-  font-weight: 800;
+  font-weight: 500;
   font-size: clamp(20px, 3.2vw, 28px);
   letter-spacing: .2px;
   text-shadow: 0 1px 0 rgba(0,0,0,0.08);
