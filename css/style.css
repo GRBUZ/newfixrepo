@@ -203,14 +203,27 @@ main{display:flex;justify-content:center;padding:16px}
   color: #666;
   font-size: 13px;
 }
-/* Tagline lisible sur fond violet */
+/* Tagline lisible sur fond violet 
 .hero .brand .tagline{
-  color: #F5F3FF;              /* blanc doux (meilleure lisibilité) */
-  font-weight: 600;            /* un peu plus gras */
+  color: #F5F3FF;              
+  font-weight: 600;            
+  font-size: clamp(12px, 2vw, 16px);
+  line-height: 1.35;
+  margin-top: 6px;
+}*/
+.hero .brand .tagline{
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  color: #F5F3FF;              /* readable on the purple header */
+  text-shadow: 0 1px 0 rgba(0,0,0,.25);
   font-size: clamp(14px, 2vw, 18px);
   line-height: 1.35;
-  text-shadow: 0 1px 0 rgba(0,0,0,.25); /* léger relief sur dégradé */
-  margin-top: 6px;
+}
+/* Creator-style typography */
+.brand .title{
+  font-family: "Sora", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.2px;
 }
 
 
