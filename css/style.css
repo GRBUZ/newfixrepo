@@ -231,4 +231,5 @@ main{display:flex;justify-content:center;padding:16px}
 .hero, .hero-actions, header, .topbar{ position: relative; z-index: 1; }
 
 
+#invalidRect{ pointer-events: none !important; }
 

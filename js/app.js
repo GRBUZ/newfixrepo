@@ -62,6 +62,9 @@ Object.assign(invalidIcon.style, {
   pointerEvents: 'none',
   zIndex: '1000'
 });
+grid.appendChild(invalidEl);
+invalidEl.appendChild(invalidIcon);
+
 invalidIcon.innerHTML = `
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
     <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle>
@@ -339,3 +342,91 @@ if (grid) {
   }
 }
 
+// === Selection core (restore) ===
+function idxToXY(idx){ return { x: idx % N, y: (idx / N) | 0 }; }
+function xyToIdx(x,y){ return y * N + x; }
+
+function applySelection(newSet){
+  // retire l’ancienne sélection
+  selected.forEach(i => { if(!newSet.has(i)) grid.children[i].classList.remove('sel'); });
+  // ajoute la nouvelle
+  newSet.forEach(i => { if(!selected.has(i)) grid.children[i].classList.add('sel'); });
+  selected = newSet;
+  buyBtn.disabled = selected.size === 0;
+}
+
+function computeRectSet(aIdx, bIdx){
+  const a = idxToXY(aIdx), b = idxToXY(bIdx);
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
+  const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  const set = new Set();
+  let blocked = false;
+
+  for(let y=y0; y<=y1; y++){
+    for(let x=x0; x<=x1; x++){
+      const idx = xyToIdx(x,y);
+      if (sold[idx] || locks[idx]) { blocked = true; continue; }
+      set.add(idx);
+    }
+  }
+
+  // Affiche le rectangle “interdit” s’il y a des cases vendues/verrouillées
+  const topLeft = grid.querySelector(`.cell[data-idx="${xyToIdx(x0,y0)}"]`);
+  if (topLeft && blocked){
+    const size = topLeft.offsetWidth; // taille cellule (incl. bordure)
+    Object.assign(invalidEl.style, {
+      display:'block',
+      left:  topLeft.offsetLeft + 'px',
+      top:   topLeft.offsetTop  + 'px',
+      width:  ((x1-x0+1) * size) + 'px',
+      height: ((y1-y0+1) * size) + 'px',
+    });
+  } else {
+    invalidEl.style.display = 'none';
+  }
+  return set;
+}
+
+function handleCellMouseDown(e){
+  if (e.button !== undefined && e.button !== 0) return; // clic gauche
+  const cell = e.target.closest('.cell');
+  if (!cell || !grid.contains(cell)) return;
+  isDragging = true;
+  movedDuringDrag = false;
+  lastDragIdx = -1;
+  dragStartIdx = +cell.dataset.idx;     // ⚠️ utilise data-idx (c’est bien ce que tu crées)
+  applySelection(new Set([dragStartIdx]));
+}
+
+function handleMouseMove(e){
+  if (!isDragging) return;
+  movedDuringDrag = true;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const cell = el && el.closest && el.closest('.cell');
+  if (!cell || !grid.contains(cell)) return;
+  const idx = +cell.dataset.idx;
+  if (idx === lastDragIdx) return;
+  lastDragIdx = idx;
+  applySelection(computeRectSet(dragStartIdx, idx));
+}
+
+function handleMouseUp(){
+  if (!isDragging) return;
+  isDragging = false;
+  invalidEl.style.display = 'none';
+}
+
+// Expose pour debug éventuel
+window.handleCellMouseDown = handleCellMouseDown;
+window.handleMouseMove = handleMouseMove;
+window.handleMouseUp = handleMouseUp;
+
+// Listeners (une seule fois)
+grid.addEventListener('mousedown', handleCellMouseDown);
+document.addEventListener('mousemove', handleMouseMove);
+document.addEventListener('mouseup', handleMouseUp);
+
+// Touch
+grid.addEventListener('touchstart', ev => handleCellMouseDown(ev.touches[0] || ev), { passive:true });
+document.addEventListener('touchmove',  ev => handleMouseMove(ev.touches[0]  || ev), { passive:true });
+document.addEventListener('touchend', handleMouseUp);
