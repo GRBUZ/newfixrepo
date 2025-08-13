@@ -56,17 +56,11 @@
 
         <label>Profile Photo (optional)
           <input id="avatar" type="file" accept="image/*" />
-          <small class="hint">Max ~1.5 MB. The image will be uploaded to <code>assets/images/</code>. You can copy the URL below and paste it later into your JSON.</small>
-        </label>
-        <label>Uploaded Image URL (copy for later)
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="uploadedUrl" type="text" readonly placeholder="(uploaded URL will appear here)" />
-            <button id="copyUrl" type="button" class="btn">Copy</button>
-          </div>
+          <small class="hint">Max ~1.5 MB.</small>
         </label>
 
         <div class="footer">
-          <button type="button" class="btn" data-close>Cancel (Esc)</button>
+          <button type="button" class="btn" data-close>Cancel</button>
           <button type="submit" id="confirm" class="btn primary">Confirm</button>
         </div>
       </form>
