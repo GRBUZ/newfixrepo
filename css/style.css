@@ -57,6 +57,8 @@ main{display:flex;justify-content:center;padding:16px}
   margin: 0 auto;
   padding: 0 16px;
 }
+
+/*
 .hero-top{
   display: grid;
   grid-template-columns: 1fr auto;
@@ -75,6 +77,41 @@ main{display:flex;justify-content:center;padding:16px}
   margin: 6px 0 0;
   font-size: clamp(12px, 1.7vw, 16px);
   opacity: .95;
+}
+*/
+/* === Compact hero header (makes the top thinner) === */
+.hero-top{
+  padding: 10px 0 8px;           /* avant ~24px/22px */
+}
+.brand h1{
+  font-size: clamp(18px, 2.4vw, 22px);
+  line-height: 1.1;
+  margin: 0;
+}
+.brand p{
+  margin: 2px 0 4px;             /* espace sous le titre plus petit */
+  font-size: clamp(11px, 1.5vw, 13px);
+}
+.meta{
+  gap: 2px;                       /* resserre les lignes prix/note/left */
+}
+.meta .price{
+  font-size: clamp(13px, 2vw, 16px);
+}
+.meta .note,
+.meta .left{
+  font-size: 12px;
+}
+
+/* (optionnel) si tu veux aussi tasser un peu la barre des boutons */
+.hero-actions{
+  padding: 6px 0 8px;             /* plus fin que la valeur actuelle */
+}
+
+/* (optionnel) sur mobile, on compacte encore un peu */
+@media (max-width: 760px){
+  .hero-top{ padding: 8px 0 6px; }
+  /* .brand p{ display:none; } */ /* décommente pour cacher le sous-titre sur mobile */
 }
 
 .meta{
