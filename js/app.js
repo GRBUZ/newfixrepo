@@ -325,3 +325,17 @@ async function loadStatus(){
 // Debug marker to verify correct file is loaded
 window.__hasForbiddenIconOverlay = true;
 console.log('app.js: forbidden icon overlay patch loaded');
+// --- Ensure selection listeners are attached ---
+if (grid) {
+  if (!grid.__selectionBound) {
+    grid.addEventListener('mousedown', handleCellMouseDown);
+    grid.addEventListener('touchstart', handleCellMouseDown, { passive: true });
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleMouseMove, { passive: true });
+    document.addEventListener('touchend', handleMouseUp);
+    grid.__selectionBound = true;
+    console.log('[selection] listeners (re)attached');
+  }
+}
+
