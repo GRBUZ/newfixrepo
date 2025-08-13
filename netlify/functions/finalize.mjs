@@ -1,12 +1,5 @@
 import { guardFinalizeInput } from './_validation.mjs';
 
-export default async (req) => {
-  const guarded = await guardFinalizeInput(req).catch(err => err);
-  if (guarded instanceof Response) return guarded; // input invalide → 4xx/403
-  const { name, linkUrl, blocks } = guarded;
-
-};
-
 // finalize.mjs — write rect + empty imageUrl for all sold blocks
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
