@@ -1,3 +1,5 @@
+import { guardFinalizeInput } from './_validation.mjs';
+
 // finalize.mjs — write rect + empty imageUrl for all sold blocks
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
