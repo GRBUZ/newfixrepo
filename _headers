@@ -1,20 +1,10 @@
-/* 
-  Security headers for Influencers Wall
-  Place this file at the ROOT of your repo (same level as index.html).
-*/
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+  Content-Security-Policy: default-src 'self'; img-src 'self' data: https://raw.githubusercontent.com https://picsum.photos; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
 
-Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-Referrer-Policy: strict-origin-when-cross-origin
-Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), interest-cohort=()
-# Optional: prevent CDNs from recompressing images
-# Save-Data: on
-# Cache-Control: no-transform
-
-# Content Security Policy —
-# If you keep small inline scripts/styles, 'unsafe-inline' is required.
-# If you later move EVERYTHING to external files with nonces/hashes, you can remove 'unsafe-inline'.
-Content-Security-Policy:   default-src 'self';   img-src 'self' data: https://raw.githubusercontent.com https://picsum.photos;   script-src 'self' 'unsafe-inline';   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;   font-src 'self' https://fonts.gstatic.com;   connect-src 'self';   base-uri 'self';   form-action 'self';   frame-ancestors 'none';   object-src 'none'
-
-/* End of global headers */
+/.netlify/functions/*
+  Content-Type: application/json; charset=utf-8
