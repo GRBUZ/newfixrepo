@@ -356,6 +356,14 @@ function renderAllRegionsOnce(){
 }
 // Example hook: call this after fetching status (sold/locks/regions)
 window.renderAllRegionsOnce = renderAllRegionsOnce;
+// après avoir récupéré /status
+sold    = data.sold    || {};
+locks   = data.locks   || {};
+regions = data.regions || {};
+
+// DESSIN AUTOMATIQUE DES RÉGIONS
+renderRegions();
+
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -365,3 +373,53 @@ form.addEventListener('submit', async (e) => {
   }
   // ... puis envoie { linkUrl: link, name, blocks, ... } à /finalize
 });
+// ---- Render regions (one overlay per region) ----
+function renderRegions() {
+  const grid = document.getElementById('grid');
+  if (!grid) return;
+
+  // Nettoyer les overlays précédents
+  grid.querySelectorAll('.region-overlay').forEach(n => n.remove());
+
+  const firstCell = grid.querySelector('.cell');
+  const size = firstCell ? firstCell.offsetWidth : 10; // cellule (incl. bordure)
+
+  // Map regionId -> linkUrl (on prend le 1er bloc vendu qui a ce regionId)
+  const regionLink = {};
+  for (const [idx, s] of Object.entries(window.sold || {})) {
+    if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) {
+      regionLink[s.regionId] = s.linkUrl;
+    }
+  }
+
+  // Dessiner 1 overlay par région
+  for (const [rid, reg] of Object.entries(window.regions || {})) {
+    if (!reg || !reg.rect || !reg.imageUrl) continue;
+
+    const { x, y, w, h } = reg.rect;
+    const idxTL = y * 100 + x; // top-left block index (N=100)
+    const tl = grid.querySelector(`.cell[data-idx="${idxTL}"]`);
+    if (!tl) continue;
+
+    const a = document.createElement('a');
+    a.className = 'region-overlay';
+    if (regionLink[rid]) { a.href = regionLink[rid]; a.target = '_blank'; a.rel = 'noopener nofollow'; }
+    Object.assign(a.style, {
+      position: 'absolute',
+      left: tl.offsetLeft + 'px',
+      top:  tl.offsetTop  + 'px',
+      width:  (w * size) + 'px',
+      height: (h * size) + 'px',
+      backgroundImage: `url("${reg.imageUrl}")`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      zIndex: 999
+    });
+    grid.appendChild(a);
+  }
+  // S’assurer que la grille est au-dessus du header
+  grid.style.position = 'relative';
+  grid.style.zIndex = 2;
+}
+window.renderRegions = renderRegions;
