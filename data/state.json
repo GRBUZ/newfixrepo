@@ -1638,6 +1638,54 @@
       "ts": 1755168674388,
       "regionId": "r_meba40nn_1si8"
     },
+    "2233": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2234": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2235": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2236": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2237": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2238": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2239": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2240": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
     "2246": {
       "name": "tata",
       "linkUrl": "https://tata.insta.com/",
@@ -1692,6 +1740,54 @@
       "ts": 1755185750713,
       "regionId": "r_mebka0u1_hic0"
     },
+    "2333": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2334": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2335": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2336": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2337": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2338": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2339": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
+    "2340": {
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
+    },
     "2346": {
       "name": "tata",
       "linkUrl": "https://tata.insta.com/",
@@ -1745,234 +1841,249 @@
       "linkUrl": "https://tata.insta.com/",
       "ts": 1755185750713,
       "regionId": "r_mebka0u1_hic0"
-    }
-  },
-  "locks": {
-    "2233": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2234": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2235": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2236": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2237": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2238": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2239": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2240": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2333": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2334": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2335": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2336": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2337": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2338": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2339": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
-    },
-    "2340": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
     },
     "2433": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2434": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2435": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2436": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2437": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2438": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2439": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2440": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2533": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2534": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2535": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2536": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2537": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2538": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2539": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2540": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2633": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2634": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2635": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2636": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2637": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2638": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2639": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2640": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2733": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2734": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2735": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2736": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2737": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2738": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2739": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2740": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2833": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2834": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2835": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2836": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2837": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2838": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2839": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     },
     "2840": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755190776733
+      "name": "new",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755190612204,
+      "regionId": "r_mebn67zf_pn79"
     }
   },
+  "locks": {},
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/testimage.jpg",
@@ -2026,6 +2137,15 @@
         "y": 4,
         "w": 7,
         "h": 9
+      }
+    },
+    "r_mebn67zf_pn79": {
+      "imageUrl": "",
+      "rect": {
+        "x": 33,
+        "y": 22,
+        "w": 8,
+        "h": 7
       }
     }
   }
