@@ -325,3 +325,32 @@ async function loadStatus(){
 // Debug marker to verify correct file is loaded
 window.__hasForbiddenIconOverlay = true;
 console.log('app.js: forbidden icon overlay patch loaded');
+window.regions = window.regions || {};
+
+function getRegionForIndex(idx){
+  const info = sold[idx];
+  if (!info) return null;
+  const reg = info.regionId && regions ? regions[info.regionId] : null;
+  if (reg && reg.rect && (reg.imageUrl || reg.imageUrl === "")) return { info, region: reg };
+  // Back-compat legacy
+  const legacyRect = info.rect, legacyImage = info.imageUrl;
+  if (legacyRect && legacyImage !== undefined) {
+    return { info, region: { imageUrl: legacyImage, rect: legacyRect } };
+  }
+  return { info, region: null };
+}
+
+function renderAllRegionsOnce(){
+  if (!regions) return;
+  const seen = new Set();
+  for (const [idxStr, s] of Object.entries(sold)){
+    const rid = s.regionId;
+    if (!rid || seen.has(rid)) continue;
+    const reg = regions[rid];
+    if (!reg || !reg.rect) continue;
+    if (typeof window.drawRegionOverlay === 'function'){
+      window.drawRegionOverlay(reg, rid);
+    }
+    seen.add(rid);
+  }
+}

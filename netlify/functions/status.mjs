@@ -1,94 +1,37 @@
+// netlify/functions/status.mjs — returns sold, locks, regions
+const STATE_PATH = process.env.STATE_PATH || "data/state.json";
+const GH_REPO = process.env.GH_REPO;
+const GH_TOKEN = process.env.GH_TOKEN;
+const GH_BRANCH = process.env.GH_BRANCH || "main";
 
-const GH_REPO   = process.env.GH_REPO;
-const GH_TOKEN  = process.env.GH_TOKEN;
-const GH_BRANCH = process.env.GH_BRANCH || 'main';
-const PATH_JSON = process.env.PATH_JSON || 'data/state.json';
-
-const API_BASE = 'https://api.github.com';
-
-function jres(status, obj) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+function bad(status, error){
+  return new Response(JSON.stringify({ ok:false, error }), {
+    status, headers: { "content-type":"application/json", "cache-control":"no-store" }
   });
-}
-
-async function ghGetFile(path) {
-  const url = `${API_BASE}/repos/${GH_REPO}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(GH_BRANCH)}`;
-  const r = await fetch(url, {
-    headers: {
-      'Authorization': `token ${GH_TOKEN}`,
-      'User-Agent': 'netlify-fn',
-      'Accept': 'application/vnd.github+json'
-    }
-  });
-  if (r.status === 404) return { sha: null, content: null, status: 404 };
-  if (!r.ok) throw new Error(`GITHUB_GET_FAILED ${r.status}`);
-  const data = await r.json();
-  const buf = Buffer.from(data.content, data.encoding || 'base64');
-  return { sha: data.sha, content: buf.toString('utf8'), status: 200 };
-}
-
-async function ghPutFile(path, content, sha, message) {
-  const url = `${API_BASE}/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`;
-  const body = {
-    message,
-    content: Buffer.from(content, 'utf8').toString('base64'),
-    branch: GH_BRANCH
-  };
-  if (sha) body.sha = sha;
-  const r = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `token ${GH_TOKEN}`,
-      'User-Agent': 'netlify-fn',
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!r.ok) throw new Error(`GITHUB_PUT_FAILED ${r.status}`);
-  const data = await r.json();
-  return data.content.sha;
-}
-
-function parseState(raw) {
-  if (!raw) return { sold:{}, locks:{} };
-  try {
-    const obj = JSON.parse(raw);
-    // Back-compat: if previous format was {artCells:{...}}
-    if (obj.artCells && !obj.sold) {
-      const sold = {};
-      for (const [k,v] of Object.entries(obj.artCells)) {
-        sold[k] = { name: v.name || v.n || '', linkUrl: v.linkUrl || v.u || '', ts: v.ts || Date.now() };
-      }
-      return { sold, locks: obj.locks || {} };
-    }
-    if (!obj.sold) obj.sold = {};
-    if (!obj.locks) obj.locks = {};
-    return obj;
-  } catch {
-    return { sold:{}, locks:{} };
-  }
-}
-
-function pruneLocks(locks) {
-  const now = Date.now();
-  const out = {};
-  for (const [k,v] of Object.entries(locks || {})) {
-    if (v && typeof v.until === 'number' && v.until > now) out[k] = v;
-  }
-  return out;
 }
 
 export default async () => {
   try {
-    const got = await ghGetFile(PATH_JSON);
-    if (got.status === 404) return jres(200, { ok:true, sold:{}, locks:{} });
-    const st = parseState(got.content);
-    st.locks = pruneLocks(st.locks);
-    return jres(200, { ok:true, sold: st.sold, locks: st.locks });
+    if (!GH_REPO || !GH_TOKEN) return bad(500, "GITHUB_CONFIG_MISSING");
+    const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(STATE_PATH)}?ref=${GH_BRANCH}`, {
+      headers: { "Authorization": `Bearer ${GH_TOKEN}`, "Accept":"application/vnd.github+json" }
+    });
+    if (r.status === 404){
+      return new Response(JSON.stringify({ ok:true, sold:{}, locks:{}, regions:{} }), {
+        headers: { "content-type":"application/json", "cache-control":"no-store" }
+      });
+    }
+    if (!r.ok) return bad(r.status, "GH_GET_FAILED");
+    const data = await r.json();
+    const content = Buffer.from(data.content || "", "base64").toString("utf-8");
+    const state = JSON.parse(content || "{}");
+    const sold = state.sold || {};
+    const locks = state.locks || {};
+    const regions = state.regions || {};
+    return new Response(JSON.stringify({ ok:true, sold, locks, regions }), {
+      headers: { "content-type":"application/json", "cache-control":"no-store" }
+    });
   } catch (e) {
-    return jres(500, { ok:false, error:'STATUS_FAILED', message: String(e) });
+    return bad(500, "SERVER_ERROR");
   }
 };
