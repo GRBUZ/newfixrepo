@@ -42,9 +42,11 @@ async function ghGetJson(path){
 }
 
 async function ghPutJson(path, jsonData, sha){
-  const content = Buffer.from(JSON.stringify(jsonData)).toString("base64");
+  // pretty-print (indent=2) + newline final pour une lecture propre dans GitHub
+  const pretty = JSON.stringify(jsonData, null, 2) + "\n";
+  const content = Buffer.from(pretty, "utf-8").toString("base64");
   const body = {
-    message: "chore: finalize purchase (regions model)",
+    message: "chore: update state (pretty JSON)",
     content,
     branch: GH_BRANCH,
     sha
@@ -53,14 +55,15 @@ async function ghPutJson(path, jsonData, sha){
     method: "PUT",
     headers: {
       "Authorization": `Bearer ${GH_TOKEN}`,
-      "Accept":"application/vnd.github+json",
-      "Content-Type":"application/json"
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
   });
   if (!r.ok) throw new Error(`GH_PUT_FAILED:${r.status}`);
-  return await r.json();
+  return r.json();
 }
+
 
 export default async (req) => {
   try {
