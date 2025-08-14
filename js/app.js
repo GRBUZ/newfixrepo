@@ -445,3 +445,151 @@ window.__regionsPoll = setInterval(async () => {
     if (typeof window.renderRegions === 'function') window.renderRegions();
   } catch (e) { /* silencieux */ }
 }, 15000);
+
+/* =====================
+   Upload + link imageUrl patch (safe to paste at END of js/app.js)
+   - Calls /finalize with {name, linkUrl, blocks}
+   - If #image has a file, POST it to /.netlify/functions/upload (FormData)
+   - Then refreshes status and calls renderRegions() (if defined)
+   - No picsum fallback; draws regions only when imageUrl exists
+   ===================== */
+
+(function IW_UploadLink_Patch(){
+  const grid        = document.getElementById('grid');
+  const modal       = document.getElementById('modal');
+  const form        = document.getElementById('form');
+  const confirmBtn  = document.getElementById('confirm');
+  const cancelBtn   = document.getElementById('cancel');
+  const nameInput   = document.getElementById('name');
+  const linkInput   = document.getElementById('link');
+  const emailInput  = document.getElementById('email');
+  const fileInput   = document.getElementById('image');  // <input type="file" id="image">
+
+  if (!grid || !form || !confirmBtn) {
+    console.warn('[IW patch] required elements not found, skipping init.');
+    return;
+  }
+
+  function normalizeUrl(u){
+    u = String(u||'').trim();
+    if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    return u;
+  }
+
+  if (typeof window.renderRegions !== 'function') {
+    window.renderRegions = function renderRegions(){
+      const gridEl = document.getElementById('grid');
+      if (!gridEl) return;
+      gridEl.querySelectorAll('.region-overlay').forEach(n=>n.remove());
+
+      const firstCell = gridEl.querySelector('.cell');
+      const size = firstCell ? firstCell.offsetWidth : 10;
+
+      const regionLink = {};
+      for (const [idx, s] of Object.entries(window.sold||{})) {
+        if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) {
+          regionLink[s.regionId] = s.linkUrl;
+        }
+      }
+
+      for (const [rid, reg] of Object.entries(window.regions||{})) {
+        if (!reg || !reg.rect || !reg.imageUrl) continue;
+        const {x,y,w,h} = reg.rect;
+        const idxTL = y*100 + x;
+        const tl = gridEl.querySelector(`.cell[data-idx="${idxTL}"]`);
+        if (!tl) continue;
+
+        const a = document.createElement('a');
+        a.className = 'region-overlay';
+        if (regionLink[rid]) { a.href = regionLink[rid]; a.target = '_blank'; a.rel = 'noopener nofollow'; }
+        Object.assign(a.style, {
+          position:'absolute',
+          left: tl.offsetLeft+'px', top: tl.offsetTop+'px',
+          width: (w*size)+'px', height: (h*size)+'px',
+          backgroundImage: `url("${reg.imageUrl}")`,
+          backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+          zIndex: 999
+        });
+        gridEl.appendChild(a);
+      }
+      gridEl.style.position = 'relative';
+      gridEl.style.zIndex = 2;
+    };
+  }
+
+  if (typeof window.refreshStatus !== 'function') {
+    window.refreshStatus = async function refreshStatus(){
+      const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
+      const data = await res.json();
+      window.sold    = data.sold    || {};
+      window.locks   = data.locks   || {};
+      window.regions = data.regions || {};
+      if (typeof window.renderRegions === 'function') window.renderRegions();
+    };
+  }
+
+  function getSelectedIndices(){
+    if (window.selected && typeof window.selected.size === 'number') {
+      return Array.from(window.selected);
+    }
+    return Array.from(document.querySelectorAll('.cell.sel')).map(el => +el.dataset.idx);
+  }
+
+  async function doFinalizeAndUpload(){
+    const name    = (nameInput && nameInput.value || '').trim();
+    const linkUrl = normalizeUrl(linkInput && linkInput.value);
+    const email   = (emailInput && emailInput.value || '').trim();
+    const blocks  = getSelectedIndices();
+
+    if (!blocks.length) { alert('Please select at least one block.'); return; }
+    if (!name || !linkUrl) { alert('Name and Profile URL are required.'); return; }
+
+    confirmBtn.disabled = true;
+
+    const fRes = await fetch('/.netlify/functions/finalize', {
+      method:'POST',
+      headers:{ 'content-type':'application/json' },
+      body: JSON.stringify({ name, linkUrl, blocks })
+    });
+    const out = await fRes.json();
+    if (!out.ok) { confirmBtn.disabled=false; alert(out.error || 'Finalize failed'); return; }
+
+    try {
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      if (file) {
+        if (!file.type.startsWith('image/')) throw new Error('Please upload an image file.');
+        if (file.size > 5*1024*1024) throw new Error('Max 5 MB.');
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        fd.append('regionId', out.regionId);
+        const upRes = await fetch('/.netlify/functions/upload', { method:'POST', body: fd });
+        const up = await upRes.json();
+        if (!up.ok) throw new Error(up.error || 'UPLOAD_FAILED');
+        console.log('[upload] image linked →', up.imageUrl);
+      } else {
+        console.log('[upload] no file provided — skipping imageUrl');
+      }
+    } catch (e) {
+      console.warn('[upload] failed:', e);
+    }
+
+    await window.refreshStatus().catch(()=>{});
+    if (modal && modal.classList) modal.classList.add('hidden');
+    confirmBtn.disabled = false;
+  }
+
+  if (!confirmBtn.__iwBound){
+    confirmBtn.addEventListener('click', (ev) => { ev.preventDefault(); doFinalizeAndUpload(); });
+    confirmBtn.__iwBound = true;
+  }
+  if (cancelBtn && !cancelBtn.__iwBound){
+    cancelBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (modal && modal.classList) modal.classList.add('hidden');
+    });
+    cancelBtn.__iwBound = true;
+  }
+
+  window.refreshStatus().catch(()=>{});
+})();
