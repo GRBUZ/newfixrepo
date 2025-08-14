@@ -53,14 +53,44 @@ async function ghPutFile(path, b64content, message, sha){
 
 export default async (req) => {
   try {
-    if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
-    if (!GH_REPO || !GH_TOKEN) return jres(500, { ok:false, error:'MISSING_CONFIG', message:'GH_REPO / GH_TOKEN not set' });
-    const body = await req.json().catch(()=>null);
-    if (!body) return jres(400, { ok:false, error:'BAD_JSON' });
-    const filename = safeBase(body.filename || 'avatar');
-    const contentType = (body.contentType || 'application/octet-stream')+'';
-    const dataB64 = (body.data || '')+'';
-    if (!dataB64) return jres(400, { ok:false, error:'NO_DATA' });
+    if (req.method !== "POST") return bad(405, "METHOD_NOT_ALLOWED");
+    if (!GH_REPO || !GH_TOKEN) return bad(500, "GITHUB_CONFIG_MISSING");
+
+    // --- accepter FormData OU JSON ---
+    const ct = (req.headers.get('content-type') || '').toLowerCase();
+    let regionId = '', filename = '', buffer = null, mime = '';
+
+    if (ct.includes('multipart/form-data')) {
+      // MODE FORMDATA (file + regionId)
+      const form = await req.formData();
+      const file = form.get('file');
+      regionId = String(form.get('regionId') || '').trim();
+      if (!file || !file.name) return bad(400, "NO_FILE");
+      if (!file.type || !file.type.startsWith("image/")) return bad(400, "NOT_IMAGE");
+      filename = file.name;
+      mime = file.type;
+      buffer = Buffer.from(await file.arrayBuffer());
+
+    } else {
+      // MODE JSON (filename + contentBase64 + regionId)
+      const body = await req.json().catch(() => null);
+      if (!body) return bad(400, "BAD_JSON");
+      regionId = String(body.regionId || '').trim();
+      filename = String(body.filename || 'image.jpg');
+      mime = String(body.contentType || 'image/jpeg');
+      const b64 = String(body.contentBase64 || '');
+      if (!b64) return bad(400, "NO_FILE_BASE64");
+      buffer = Buffer.from(b64, 'base64');
+      if (!mime.startsWith('image/')) return bad(400, "NOT_IMAGE");
+    }
+
+    if (!regionId) return bad(400, "MISSING_REGION_ID");
+
+    // … puis garde le reste de TA logique d’upload :
+    //  - écrire dans assets/images/<regionId>/<filename>
+    //  - construire l’URL RAW GitHub
+    //  - mettre à jour state.json → regions[regionId].imageUrl (pretty-print)
+    //  (si tu n’as pas cette partie, dis-le moi et je te colle le bloc exact)
 
     const ext = extForContentType(contentType);
     const now = Date.now();
