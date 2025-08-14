@@ -218,4 +218,11 @@ main{display:flex;justify-content:center;padding:16px}
   font-size: clamp(14px, 2vw, 18px);
   line-height: 1.35;
 }
+/* overlays cliqueables au-dessus de la grille */
+.region-overlay{ position:absolute; z-index:999; display:block; text-decoration:none; }
+/* s’il y a un overlay rouge d’interdiction, qu’il ne bloque pas les clics */
+#invalidRect{ pointer-events:none; }
+/* s’assurer que la grille est cliquable */
+#grid{ position:relative; z-index:2; }
+
 
