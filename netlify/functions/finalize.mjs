@@ -71,11 +71,40 @@ export default async (req) => {
     if (!payload) return bad(400, "BAD_JSON");
 
     const name = String(payload.name || "").trim().slice(0, 40);
-    const linkUrl = String(payload.linkUrl || "").trim();
     const blocks = Array.isArray(payload.blocks) ? payload.blocks.map(n => Number(n)) : [];
 
-    if (!name || !linkUrl || !blocks.length) return bad(400, "MISSING_FIELDS");
-    if (!/^https?:\/\//i.test(linkUrl)) return bad(400, "INVALID_URL");
+    // remplace ces lignes :
+// const linkUrl = String(payload.linkUrl || "").trim();
+// if (!name || !linkUrl || !blocks.length) return bad(400, "MISSING_FIELDS");
+// if (!/^https?:\/\//i.test(linkUrl)) return bad(400, "INVALID_URL");
+
+// par :
+const rawUrl = String(payload.linkUrl || "").trim();
+if (!name || !rawUrl || !blocks.length) return bad(400, "MISSING_FIELDS");
+
+let linkUrl;
+try {
+  linkUrl = normalizeUrl(rawUrl);
+} catch (e) {
+  return bad(400, "INVALID_URL");
+}
+
+function normalizeUrl(raw) {
+  let s = (raw || "").trim();
+  if (!s) throw new Error("EMPTY");
+  // Si l'utilisateur n'a pas mis de schéma, on préfixe en https://
+  if (!/^[a-z][a-z0-9+\-.]*:\/\//i.test(s)) {
+    s = "https://" + s;
+  }
+  let u;
+  try { u = new URL(s); } catch { throw new Error("INVALID_URL"); }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error("INVALID_URL_SCHEME");
+  }
+  u.hash = "";            // on enlève l’ancre (#...)
+  return u.toString();    // URL normalisée
+}
+
 
     // Load state.json
     const { json: state0, sha } = await ghGetJson(STATE_PATH);

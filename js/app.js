@@ -356,3 +356,12 @@ function renderAllRegionsOnce(){
 }
 // Example hook: call this after fetching status (sold/locks/regions)
 window.renderAllRegionsOnce = renderAllRegionsOnce;
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  let link = linkInput.value.trim();
+  if (link && !/^https?:\/\//i.test(link)) {
+    link = 'https://' + link;     // confort côté client
+  }
+  // ... puis envoie { linkUrl: link, name, blocks, ... } à /finalize
+});
