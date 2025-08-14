@@ -354,3 +354,5 @@ function renderAllRegionsOnce(){
     seen.add(rid);
   }
 }
+// Example hook: call this after fetching status (sold/locks/regions)
+window.renderAllRegionsOnce = renderAllRegionsOnce;
