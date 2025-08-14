@@ -52,3 +52,24 @@
     });
   }
 })();
+// Après l'UPLOAD OK
+// Supposons que tu as:
+const regionId = out.regionId;                 // récupéré après /finalize
+const repoPath = `assets/images/${regionId}/${filename}`; // ou ce que ton upload a produit
+// OU si tu as déjà l’URL: const imageUrl = "https://raw.githubusercontent.com/…"
+
+const linkPayload = {
+  regionId,
+  imageUrl: repoPath   // <- peut être un chemin repo OU une URL http(s)
+};
+
+const resp = await fetch('/.netlify/functions/link-image', {
+  method: 'POST',
+  headers: { 'content-type':'application/json' },
+  body: JSON.stringify(linkPayload)
+});
+const j = await resp.json();
+if (!j.ok) { console.warn('link-image failed:', j); } else { console.log('image linked', j.imageUrl); }
+
+// Optionnel: refresh pour dessiner immédiatement
+if (typeof refreshStatus === 'function') await refreshStatus();
