@@ -323,10 +323,6 @@ async function loadStatus(){
   if(s&&s.ok){ sold=s.sold||{}; 
   locks=s.locks||{}; } }
   catch{}
-  // après avoir récupéré /status
-  sold    = data.sold    || {};
-  locks   = data.locks   || {};
-  regions = data.regions || {};
 
   // DESSIN AUTOMATIQUE DES RÉGIONS
   renderRegions();
