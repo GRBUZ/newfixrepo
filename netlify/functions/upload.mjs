@@ -52,25 +52,37 @@ async function ghPutJson(path, jsonData, sha, message){
   return r.json(); // contient { commit:{ sha:... }, content:{ sha:... } }
 }
 
+// Remplace ta ghPutBinary par cette version "upsert"
 async function ghPutBinary(path, buffer, message){
-  const r = await fetch(
-    `https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`,
-    {
-      method: "PUT",
-      headers: {
-        "Authorization": `Bearer ${GH_TOKEN}`,
-        "Accept": "application/vnd.github+json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        message: message || `feat: upload ${path}`,
-        content: Buffer.from(buffer).toString("base64"),
-        branch: GH_BRANCH
-      })
-    }
-  );
-  if (!r.ok) throw new Error(`GH_PUT_BIN_FAILED:${r.status}`);
-  return r.json(); // idem: { commit:{ sha }, content:{ sha } }
+  const baseURL = `https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`;
+  const headers = {
+    "Authorization": `Bearer ${GH_TOKEN}`,
+    "Accept": "application/vnd.github+json",
+    "Content-Type": "application/json"
+  };
+
+  // 1) probe: existe-t-il déjà ? (pour récupérer le sha)
+  let sha = null;
+  const probe = await fetch(`${baseURL}?ref=${GH_BRANCH}`, { headers });
+  if (probe.ok) {
+    const j = await probe.json();
+    sha = j.sha || null;
+  } else if (probe.status !== 404) {
+    // autre erreur (ex: 409 si branche), on lève
+    throw new Error(`GH_GET_PROBE_FAILED:${probe.status}`);
+  }
+
+  // 2) PUT avec ou sans sha (update si sha présent, sinon create)
+  const body = {
+    message: message || `feat: upload ${path}`,
+    content: Buffer.from(buffer).toString("base64"),
+    branch: GH_BRANCH
+  };
+  if (sha) body.sha = sha;
+
+  const put = await fetch(baseURL, { method: "PUT", headers, body: JSON.stringify(body) });
+  if (!put.ok) throw new Error(`GH_PUT_BIN_FAILED:${put.status}`);
+  return put.json();
 }
 
 export default async (req) => {
