@@ -26,29 +26,45 @@ async function ghGetJson(path){
   return { json: JSON.parse(content || "{}"), sha: data.sha };
 }
 
-async function ghPutJson(path, jsonData, sha, msg){
-  const pretty = JSON.stringify(jsonData, null, 2) + "\n";            // lisible
+  async function ghPutJson(path, jsonData, sha, msg){
+  const pretty = JSON.stringify(jsonData, null, 2) + "\n";
   const body = {
     message: msg || "chore: set regions[regionId].imageUrl",
     content: Buffer.from(pretty, "utf-8").toString("base64"),
-    branch: GH_BRANCH,
-    sha
+    branch: GH_BRANCH
   };
-  const r = await fetch(
-    `https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`,
-    {
-      method: "PUT",
-      headers: {
-        "Authorization": `Bearer ${GH_TOKEN}`,
-        "Accept": "application/vnd.github+json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    }
-  );
+  if (sha) body.sha = sha;  // ← ajoute sha seulement s'il existe
+  const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`, {
+    method: "PUT",
+    headers: { "Authorization": `Bearer ${GH_TOKEN}`, "Accept": "application/vnd.github+json", "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
   if (!r.ok) throw new Error(`GH_PUT_FAILED:${r.status}`);
   return r.json();
 }
+
+
+  //const pretty = JSON.stringify(jsonData, null, 2) + "\n";            // lisible
+  //const body = {
+    //message: msg || "chore: set regions[regionId].imageUrl",
+    //content: Buffer.from(pretty, "utf-8").toString("base64"),
+    //branch: GH_BRANCH,
+    //sha
+  //};
+  //const r = await fetch(
+    //`https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`,
+    //{
+      //method: "PUT",
+      //headers: {
+        //"Authorization": `Bearer ${GH_TOKEN}`,
+        //"Accept": "application/vnd.github+json",
+        //"Content-Type": "application/json"
+      //},
+      //body: JSON.stringify(body)
+    //}
+  //);
+  //if (!r.ok) throw new Error(`GH_PUT_FAILED:${r.status}`);
+  //return r.json();
 
 function toAbsoluteUrl(imageUrl){
   // Si on reçoit "assets/images/…", on fabrique l’URL RAW GitHub
