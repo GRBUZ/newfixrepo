@@ -318,7 +318,18 @@ async function unlock(indices){
 }
 
 async function loadStatus(){
-  try{ const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); const s=await r.json(); if(s&&s.ok){ sold=s.sold||{}; locks=s.locks||{}; } }catch{}
+  try{ const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); 
+  const s=await r.json(); 
+  if(s&&s.ok){ sold=s.sold||{}; 
+  locks=s.locks||{}; } }
+  catch{}
+  // après avoir récupéré /status
+  sold    = data.sold    || {};
+  locks   = data.locks   || {};
+  regions = data.regions || {};
+
+  // DESSIN AUTOMATIQUE DES RÉGIONS
+  renderRegions();
 }
 (async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
 
@@ -355,14 +366,7 @@ function renderAllRegionsOnce(){
   }
 }
 // Example hook: call this after fetching status (sold/locks/regions)
-//window.renderAllRegionsOnce = renderAllRegionsOnce;
-// après avoir récupéré /status
-sold    = data.sold    || {};
-locks   = data.locks   || {};
-regions = data.regions || {};
-
-// DESSIN AUTOMATIQUE DES RÉGIONS
-renderRegions();
+window.renderAllRegionsOnce = renderAllRegionsOnce;
 
 
 form.addEventListener('submit', async (e) => {
