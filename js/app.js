@@ -323,9 +323,6 @@ async function loadStatus(){
   if(s&&s.ok){ sold=s.sold||{}; 
   locks=s.locks||{}; } }
   catch{}
-
-  // DESSIN AUTOMATIQUE DES RÉGIONS
-  renderRegions();
 }
 (async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
 
