@@ -4051,7 +4051,104 @@
       "regionId": "r_mebpu8us_uotf"
     }
   },
-  "locks": {},
+  "locks": {
+    "209": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "210": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "211": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "212": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "213": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "214": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "309": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "310": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "311": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "312": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "313": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "314": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "409": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "410": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "411": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "412": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "413": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "414": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "509": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "510": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "511": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "512": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "513": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    },
+    "514": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755206968923
+    }
+  },
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
