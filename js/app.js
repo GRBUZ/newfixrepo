@@ -420,3 +420,28 @@ function renderRegions() {
   grid.style.zIndex = 2;
 }
 window.renderRegions = renderRegions;
+
+// ---- Auto-refresh status + render regions (safe, add-only) ----
+(async function regionsBootOnce(){
+  try {
+    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
+    const data = await res.json();
+    window.sold    = data.sold    || {};
+    window.locks   = data.locks   || {};
+    window.regions = data.regions || {};
+    if (typeof window.renderRegions === 'function') window.renderRegions();
+  } catch (e) { console.warn('[regions] initial load failed', e); }
+})();
+
+// rafraîchit périodiquement (tu peux mettre 5000 ms si tu veux)
+window.__regionsPoll && clearInterval(window.__regionsPoll);
+window.__regionsPoll = setInterval(async () => {
+  try {
+    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
+    const data = await res.json();
+    window.sold    = data.sold    || {};
+    window.locks   = data.locks   || {};
+    window.regions = data.regions || {};
+    if (typeof window.renderRegions === 'function') window.renderRegions();
+  } catch (e) { /* silencieux */ }
+}, 15000);
