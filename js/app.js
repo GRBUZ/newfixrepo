@@ -355,7 +355,7 @@ function renderAllRegionsOnce(){
   }
 }
 // Example hook: call this after fetching status (sold/locks/regions)
-window.renderAllRegionsOnce = renderAllRegionsOnce;
+//window.renderAllRegionsOnce = renderAllRegionsOnce;
 // après avoir récupéré /status
 sold    = data.sold    || {};
 locks   = data.locks   || {};
