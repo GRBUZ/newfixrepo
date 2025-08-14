@@ -3640,7 +3640,7 @@
   "locks": {},
   "regions": {
     "r_meb9lgam_ka82": {
-      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/r_meb9lgam_ka82/probe_1755204494168.png",
+      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
       "rect": {
         "x": 26,
         "y": 5,
@@ -3649,7 +3649,7 @@
       }
     },
     "r_meb9udj5_19eb": {
-      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/testimage.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
       "rect": {
         "x": 43,
         "y": 3,
@@ -3658,7 +3658,7 @@
       }
     },
     "r_meba40nn_1si8": {
-      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/testimage.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
       "rect": {
         "x": 19,
         "y": 19,
@@ -3667,7 +3667,7 @@
       }
     },
     "r_mebaihkw_857v": {
-      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/testimage.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
       "rect": {
         "x": 0,
         "y": 0,
