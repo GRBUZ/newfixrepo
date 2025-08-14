@@ -1866,6 +1866,30 @@
       "ts": 1755185750713,
       "regionId": "r_mebka0u1_hic0"
     },
+    "2064": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2065": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2066": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2067": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
     "2119": {
       "name": "regiontest",
       "linkUrl": "https://tata.insta.com/",
@@ -1943,6 +1967,30 @@
       "linkUrl": "https://tata.insta.com/",
       "ts": 1755185750713,
       "regionId": "r_mebka0u1_hic0"
+    },
+    "2164": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2165": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2166": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2167": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
     },
     "2219": {
       "name": "regiontest",
@@ -2069,6 +2117,30 @@
       "linkUrl": "https://tata.insta.com/",
       "ts": 1755185750713,
       "regionId": "r_mebka0u1_hic0"
+    },
+    "2264": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2265": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2266": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
+    },
+    "2267": {
+      "name": "tatanews",
+      "linkUrl": "https://tata.insta.com/",
+      "ts": 1755191539173,
+      "regionId": "r_mebnq38l_f0lx"
     },
     "2333": {
       "name": "new",
@@ -2413,56 +2485,7 @@
       "regionId": "r_mebn67zf_pn79"
     }
   },
-  "locks": {
-    "2064": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2065": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2066": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2067": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2164": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2165": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2166": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2167": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2264": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2265": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2266": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    },
-    "2267": {
-      "uid": "de941b97-c746-429a-a35b-8810092933e9",
-      "until": 1755191702631
-    }
-  },
+  "locks": {},
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://picsum.photos/300/180",
@@ -2534,6 +2557,15 @@
         "y": 11,
         "w": 11,
         "h": 5
+      }
+    },
+    "r_mebnq38l_f0lx": {
+      "imageUrl": "",
+      "rect": {
+        "x": 64,
+        "y": 20,
+        "w": 4,
+        "h": 3
       }
     }
   }
