@@ -530,9 +530,9 @@ window.__regionsPoll = setInterval(async () => {
   }
 
   function getSelectedIndices(){
-    if (window.selected && typeof window.selected.size === 'number') {
+    /*if (window.selected && typeof window.selected.size === 'number') {
       return Array.from(window.selected);
-    }
+    }*/
     return Array.from(document.querySelectorAll('.cell.sel')).map(el => +el.dataset.idx);
   }
 
@@ -550,10 +550,10 @@ window.__regionsPoll = setInterval(async () => {
     const fRes = await fetch('/.netlify/functions/finalize', {
       method:'POST',
       headers:{ 'content-type':'application/json' },
-      body: JSON.stringify({ name, linkUrl, blocks })
+      body: JSON.stringify({ uid, name, linkUrl, blocks })
     });
     const out = await fRes.json();
-    if (!out.ok) { confirmBtn.disabled=false; alert(out.error || 'Finalize failed'); return; }
+    if (!out.ok) { alert(out.error || 'Finalize failed'); return; }
 
     try {
       const file = fileInput && fileInput.files && fileInput.files[0];
