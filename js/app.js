@@ -36,7 +36,7 @@ function startHeartbeat(){
   heartbeat = setInterval(async ()=>{
     if (!currentLock.length) return;
     try { await reserve(currentLock); } catch {}
-  }, 5000); // 25s
+  }, 4000); // 25s
 }
 function stopHeartbeat(){
   if (heartbeat){ clearInterval(heartbeat); heartbeat=null; }
@@ -299,7 +299,7 @@ async function reserve(indices){
   const r = await fetch('/.netlify/functions/reserve', {
     method:'POST',
     headers:{'content-type':'application/json'},
-    body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
+    body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
   });
   const res=await r.json();
   if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
@@ -307,14 +307,14 @@ async function reserve(indices){
   // Ensure local locks reflect what we just reserved, with a full TTL
   const now = Date.now();
   for (const i of (res.locked||[])){
-    locks[i] = { uid, until: now + 180000 };
+    locks[i] = { uid, until: now + 300000 };
   }
   // Merge incoming (others' locks) without dropping ours
   locks = mergeLocksPreferLocal(locks, res.locks || {});
   paintAll();
   
   // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
-  holdIncomingLocksUntil = Date.now() + 185000;
+  holdIncomingLocksUntil = Date.now() + 305000;
   // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
   currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
   return res;
