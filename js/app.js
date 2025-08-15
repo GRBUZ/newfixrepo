@@ -113,11 +113,22 @@ function isBlockedCell(idx){
 
 function paintCell(idx){
   const d=grid.children[idx]; const s=sold[idx]; const l=locks[idx];
+  // DEBUG TEMPORAIRE pour quelques cellules
+  if (idx < 5 || (l && l.until > Date.now())) {
+    console.log(`🎨 [paintCell] idx=${idx}:`, {
+      sold: !!s,
+      lock: l ? {uid: l.uid, until: new Date(l.until).toLocaleTimeString()} : null,
+      isReserved: !!(l && l.until > Date.now()),
+      isOtherUser: !!(l && l.until > Date.now() && l.uid !== uid)
+    });
+  }
+  
   const reserved = l && l.until > Date.now() && !s;
   const reservedByOther = reserved && l.uid !== uid;
   d.classList.toggle('sold', !!s);
   d.classList.toggle('pending', !!reservedByOther);
   d.classList.toggle('sel', selected.has(idx));
+  
   if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)){
     const [r,c]=idxToRowCol(idx); const { w:CW, h:CH }=getCellSize();
     const offX=(c - s.rect.x)*CW, offY=(r - s.rect.y)*CH;
@@ -342,44 +353,74 @@ function rectFromIndices(arr){
 }
 
 async function loadStatus(){
+  console.log('🔄 [loadStatus] DÉBUT');
   try{
     const r = await fetch('/.netlify/functions/status',{cache:'no-store'});
     const s = await r.json();
+    console.log('📡 [loadStatus] Réponse serveur:', {
+      ok: s?.ok,
+      locksCount: Object.keys(s?.locks || {}).length,
+      soldCount: Object.keys(s?.sold || {}).length
+    });
+    
     if(s && s.ok){
       // Toujours mettre à jour SOLD
       sold = s.sold || {};
+      console.log('💰 [loadStatus] SOLD mis à jour:', Object.keys(sold).length, 'vendus');
 
       // Verrous entrants du serveur
       const incoming = s.locks || {};
+      console.log('🔒 [loadStatus] LOCKS entrants:', Object.keys(incoming).length);
 
       // Si on est dans la fenêtre de protection ou modale ouverte,
-      // on NE TOUCHE PAS aux locks (on ne fait pas clignoter)
       const modalOpen = !modal.classList.contains('hidden');
-      if (Date.now() < holdIncomingLocksUntil || modalOpen || (currentLock && currentLock.length)){
-        // on ignore les locks entrants pendant cette fenêtre
+      const protectionActive = Date.now() < holdIncomingLocksUntil;
+      const hasCurrentLock = currentLock && currentLock.length;
+      
+      console.log('🛡️ [loadStatus] Protection:', {
+        modalOpen,
+        protectionActive,
+        hasCurrentLock,
+        holdUntil: new Date(holdIncomingLocksUntil).toLocaleTimeString()
+      });
+      
+      if (protectionActive || modalOpen || hasCurrentLock){
+        console.log('⏸️ [loadStatus] PROTECTION ACTIVE - ignorant locks serveur');
+        console.log('🔒 [loadStatus] locks actuels:', Object.keys(locks).length);
         paintAll();
         return;
       }
 
       // Sinon, on fusionne de façon sûre : local > serveur
+      const oldLocks = { ...locks };
       locks = (typeof mergeLocksPreferLocal === 'function')
         ? mergeLocksPreferLocal(locks, incoming)
         : incoming;
       
-      // 🆕 LIGNE AJOUTÉE : Synchroniser window.locks avec locks
+      console.log('🔄 [loadStatus] MERGE:', {
+        avant: Object.keys(oldLocks).length,
+        serveur: Object.keys(incoming).length,
+        après: Object.keys(locks).length
+      });
+      
+      // Synchroniser window.locks avec locks
       window.locks = { ...locks };
+      console.log('🌐 [loadStatus] window.locks synchronisé');
     }
-  } catch {}
+  } catch(e) {
+    console.error('❌ [loadStatus] ERREUR:', e);
+  }
+  console.log('✅ [loadStatus] FIN');
 }
 
 (async function init(){ 
   await loadStatus(); paintAll(); 
   /*setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); */
   setInterval(async()=>{ 
-  console.log('[POLLING] Loading status...'); 
+  console.log('⏰ [POLLING PRINCIPAL] Début cycle');
   await loadStatus(); 
   paintAll(); 
-  console.log('[POLLING] Done');
+  console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);
 }, 2500);
 
 }
@@ -389,30 +430,23 @@ async function loadStatus(){
 window.__regionsPoll && clearInterval(window.__regionsPoll);
 window.__regionsPoll = setInterval(async () => {
   try {
-    console.log('[REGIONS POLL] Starting...');
+    console.log('🌍 [REGIONS] Début polling regions...');
     const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
     const data = await res.json();
     
-    // 🔍 DEBUG : Voir ce qui se passe avec les locks
-    console.log('[REGIONS POLL] Before overwrite:', Object.keys(window.locks || {}).length, 'locks');
-    console.log('[REGIONS POLL] Server data:', Object.keys(data.locks || {}).length, 'locks');
-    
-    window.sold    = data.sold    || {};
-    
-    // 🚨 LE PROBLÈME EST PROBABLEMENT ICI :
-    const oldLocks = window.locks;
-    //window.locks   = data.locks   || {};
-    
-    // 🔍 Comparer avant/après
-    console.log('[REGIONS POLL] After overwrite:', Object.keys(window.locks || {}).length, 'locks');
-    console.log('[REGIONS POLL] Lost locks?', Object.keys(oldLocks || {}).filter(k => !(k in window.locks)));
-    
+    // SEULEMENT regions et sold, PAS de locks !
+    window.sold = data.sold || {};
     window.regions = data.regions || {};
-    if (typeof window.renderRegions === 'function') window.renderRegions();
     
-    console.log('[REGIONS POLL] Done');
+    console.log('🌍 [REGIONS] Mise à jour:', {
+      regions: Object.keys(window.regions).length,
+      sold: Object.keys(window.sold).length
+    });
+    
+    if (typeof window.renderRegions === 'function') window.renderRegions();
+    console.log('🌍 [REGIONS] Terminé');
   } catch (e) { 
-    console.warn('[REGIONS POLL] Failed:', e);
+    console.warn('❌ [REGIONS] Erreur:', e);
   }
 }, 15000);
 
