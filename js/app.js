@@ -343,20 +343,11 @@ function rectFromIndices(arr){
 
 async function loadStatus(){
   try{
-    const r = await fetch(`/.netlify/functions/status?ts=${Date.now()}`, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      }
-    });
+    const r = await fetch('/.netlify/functions/status',{cache:'no-store'});
     const s = await r.json();
-    
     if(s && s.ok){
-      // Toujours mettre à jour SOLD et REGIONS
+      // Toujours mettre à jour SOLD
       sold = s.sold || {};
-      window.sold = sold; // Pour compatibilité regions
-      window.regions = s.regions || {};
 
       // Verrous entrants du serveur
       const incoming = s.locks || {};
@@ -365,10 +356,8 @@ async function loadStatus(){
       // on NE TOUCHE PAS aux locks (on ne fait pas clignoter)
       const modalOpen = !modal.classList.contains('hidden');
       if (Date.now() < holdIncomingLocksUntil || modalOpen || (currentLock && currentLock.length)){
-        // on ignore les locks entrants pendant cette fenêtre, mais on rafraîchit l'affichage
+        // on ignore les locks entrants pendant cette fenêtre
         paintAll();
-        // 🆕 Render regions même pendant la protection
-        if (typeof window.renderRegions === 'function') window.renderRegions();
         return;
       }
 
@@ -377,15 +366,10 @@ async function loadStatus(){
         ? mergeLocksPreferLocal(locks, incoming)
         : incoming;
       
-      // 🆕 Synchroniser window.locks pour regions
-      window.locks = locks;
-      
-      // 🆕 Render regions après merge
-      if (typeof window.renderRegions === 'function') window.renderRegions();
+      // 🆕 LIGNE AJOUTÉE : Synchroniser window.locks avec locks
+      window.locks = { ...locks };
     }
-  } catch(e) { 
-    console.warn('[loadStatus] failed:', e);
-  }
+  } catch {}
 }
 
 (async function init(){ 
@@ -401,6 +385,36 @@ async function loadStatus(){
 }
 
 )();
+
+window.__regionsPoll && clearInterval(window.__regionsPoll);
+window.__regionsPoll = setInterval(async () => {
+  try {
+    console.log('[REGIONS POLL] Starting...');
+    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
+    const data = await res.json();
+    
+    // 🔍 DEBUG : Voir ce qui se passe avec les locks
+    console.log('[REGIONS POLL] Before overwrite:', Object.keys(window.locks || {}).length, 'locks');
+    console.log('[REGIONS POLL] Server data:', Object.keys(data.locks || {}).length, 'locks');
+    
+    window.sold    = data.sold    || {};
+    
+    // 🚨 LE PROBLÈME EST PROBABLEMENT ICI :
+    const oldLocks = window.locks;
+    //window.locks   = data.locks   || {};
+    
+    // 🔍 Comparer avant/après
+    console.log('[REGIONS POLL] After overwrite:', Object.keys(window.locks || {}).length, 'locks');
+    console.log('[REGIONS POLL] Lost locks?', Object.keys(oldLocks || {}).filter(k => !(k in window.locks)));
+    
+    window.regions = data.regions || {};
+    if (typeof window.renderRegions === 'function') window.renderRegions();
+    
+    console.log('[REGIONS POLL] Done');
+  } catch (e) { 
+    console.warn('[REGIONS POLL] Failed:', e);
+  }
+}, 15000);
 
 // Regions overlay (kept)
 window.regions = window.regions || {};
