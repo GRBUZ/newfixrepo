@@ -343,18 +343,20 @@ function rectFromIndices(arr){
 
 async function loadStatus(){
   try{
-    /*const r = await fetch('/.netlify/functions/status',{cache:'no-store'});*/
-    const r = await fetch(`/.netlify/functions/status?ts=${Date.now()}`,{
-  cache:'no-store',
-  headers: {
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache'
-  }
-});
+    const r = await fetch(`/.netlify/functions/status?ts=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    });
     const s = await r.json();
+    
     if(s && s.ok){
-      // Toujours mettre à jour SOLD
+      // Toujours mettre à jour SOLD et REGIONS
       sold = s.sold || {};
+      window.sold = sold; // Pour compatibilité regions
+      window.regions = s.regions || {};
 
       // Verrous entrants du serveur
       const incoming = s.locks || {};
@@ -363,17 +365,27 @@ async function loadStatus(){
       // on NE TOUCHE PAS aux locks (on ne fait pas clignoter)
       const modalOpen = !modal.classList.contains('hidden');
       if (Date.now() < holdIncomingLocksUntil || modalOpen || (currentLock && currentLock.length)){
-      // on ignore les locks entrants pendant cette fenêtre, mais on rafraîchit l'affichage
-      paintAll();
-      return;
+        // on ignore les locks entrants pendant cette fenêtre, mais on rafraîchit l'affichage
+        paintAll();
+        // 🆕 Render regions même pendant la protection
+        if (typeof window.renderRegions === 'function') window.renderRegions();
+        return;
       }
 
       // Sinon, on fusionne de façon sûre : local > serveur
       locks = (typeof mergeLocksPreferLocal === 'function')
         ? mergeLocksPreferLocal(locks, incoming)
         : incoming;
+      
+      // 🆕 Synchroniser window.locks pour regions
+      window.locks = locks;
+      
+      // 🆕 Render regions après merge
+      if (typeof window.renderRegions === 'function') window.renderRegions();
     }
-  } catch {}
+  } catch(e) { 
+    console.warn('[loadStatus] failed:', e);
+  }
 }
 
 (async function init(){ 
@@ -433,24 +445,13 @@ window.renderRegions = renderRegions;
 // Initial regions fetch + periodic refresh (15s)
 (async function regionsBootOnce(){
   try {
-    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
-    const data = await res.json();
-    window.sold    = data.sold    || {};
-    window.locks   = data.locks   || {};
-    window.regions = data.regions || {};
-    if (typeof window.renderRegions === 'function') window.renderRegions();
-  } catch (e) { console.warn('[regions] initial load failed', e); }
+    // Utilise la même fonction que le polling principal
+    await loadStatus();
+    paintAll(); // S'assurer que tout est rendu
+    console.log('[regions] initial load via loadStatus()');
+  } catch (e) { 
+    console.warn('[regions] initial load failed', e); 
+  }
 })();
-window.__regionsPoll && clearInterval(window.__regionsPoll);
-window.__regionsPoll = setInterval(async () => {
-  try {
-    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
-    const data = await res.json();
-    window.sold    = data.sold    || {};
-    window.locks   = data.locks   || {};
-    window.regions = data.regions || {};
-    if (typeof window.renderRegions === 'function') window.renderRegions();
-  } catch (e) { }
-}, 15000);
-
-console.log('app.js (robust locks + heartbeat) loaded');
+console.log('✅ Unified polling implemented - no more timing conflicts!');
+/*console.log('app.js (robust locks + heartbeat) loaded');*/
