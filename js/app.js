@@ -322,11 +322,29 @@ async function unlock(indices){
 }
 
 async function loadStatus(){
-  try{ const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); 
-  const s=await r.json(); 
-  if(s&&s.ok){ sold=s.sold||{}; 
-  locks=s.locks||{}; } }
-  catch{}
+  try{ 
+    const r = await fetch('/.netlify/functions/status', {cache:'no-store'}); 
+    const s = await r.json(); 
+    if(s && s.ok){ 
+      sold = s.sold || {}; 
+      
+      // CORRECTION : Ne pas écraser les locks si on en a des récents
+      if (s.locks) {
+        // Préserver les locks récents de l'utilisateur actuel
+        const now = Date.now();
+        for (const [idx, localLock] of Object.entries(locks)) {
+          if (localLock.uid === uid && localLock.until > now) {
+            // Garder le lock local s'il est encore valide
+            if (!s.locks[idx] || s.locks[idx].until < localLock.until) {
+              s.locks[idx] = localLock;
+            }
+          }
+        }
+        locks = s.locks;
+      }
+    } 
+  }
+  catch(e) { console.warn('loadStatus failed:', e); }
 }
 (async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
 
