@@ -36,7 +36,7 @@ function startHeartbeat(){
   heartbeat = setInterval(async ()=>{
     if (!currentLock.length) return;
     try { await reserve(currentLock); } catch {}
-  }, 25000); // 25s
+  }, 5000); // 25s
 }
 function stopHeartbeat(){
   if (heartbeat){ clearInterval(heartbeat); heartbeat=null; }
@@ -245,7 +245,7 @@ async function reserve(indices){
   paintAll();
   
   // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
-  holdIncomingLocksUntil = Date.now() + 8000;
+  holdIncomingLocksUntil = Date.now() + 185000;
   // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
   currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
   return res;
