@@ -340,7 +340,6 @@ async function loadStatus(){
       const modalOpen = !modal.classList.contains('hidden');
       if (Date.now() < holdIncomingLocksUntil || modalOpen || (currentLock && currentLock.length)){
       // on ignore les locks entrants pendant cette fenêtre, mais on rafraîchit l'affichage
-       paintAll();
       return;
       }
       }
