@@ -343,7 +343,14 @@ function rectFromIndices(arr){
 
 async function loadStatus(){
   try{
-    const r = await fetch('/.netlify/functions/status',{cache:'no-store'});
+    /*const r = await fetch('/.netlify/functions/status',{cache:'no-store'});*/
+    const r = await fetch(`/.netlify/functions/status?ts=${Date.now()}`,{
+  cache:'no-store',
+  headers: {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache'
+  }
+});
     const s = await r.json();
     if(s && s.ok){
       // Toujours mettre à jour SOLD
@@ -369,7 +376,19 @@ async function loadStatus(){
   } catch {}
 }
 
-(async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
+(async function init(){ 
+  await loadStatus(); paintAll(); 
+  /*setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); */
+  setInterval(async()=>{ 
+  console.log('[POLLING] Loading status...'); 
+  await loadStatus(); 
+  paintAll(); 
+  console.log('[POLLING] Done');
+}, 2500);
+
+}
+
+)();
 
 // Regions overlay (kept)
 window.regions = window.regions || {};
