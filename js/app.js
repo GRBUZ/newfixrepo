@@ -307,7 +307,7 @@ function rectFromIndices(arr){
 }
 
 async function reserve(indices){
-  const r=await fetch('/.netlify/functions/reserve',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks: indices }) });
+  const r=await fetch('/.netlify/functions/reserve',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks, ttl: 180000}) });
   const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
   locks = res.locks || locks; paintAll(); return res;
 }
