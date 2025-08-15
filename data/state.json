@@ -6061,40 +6061,7 @@
       "regionId": "r_med2dt87_m6t9"
     }
   },
-  "locks": {
-    "3473": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3474": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3475": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3476": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3573": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3574": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3575": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    },
-    "3576": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755287220128
-    }
-  },
+  "locks": {},
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
