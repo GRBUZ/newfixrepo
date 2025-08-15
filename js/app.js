@@ -3,6 +3,7 @@
 // - Cell size computed from DOM (handles CSS changes)
 // - High z-index; ensure grid has position:relative
 // - No-holes selection logic retained
+// - FIXED: Reservation system that maintains 3-minute locks
 
 const N = 100;
 const TOTAL_PIXELS = 1_000_000;
@@ -32,6 +33,93 @@ let selected = new Set();
 // drag state
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;
+
+// ========== RESERVATION MANAGER - FIX PRINCIPAL ==========
+class ReservationManager {
+  constructor() {
+    this.activeReservations = new Set();
+    this.heartbeatInterval = null;
+    this.debugMode = true; // Pour voir ce qui se passe
+  }
+  
+  startHeartbeat() {
+    if (this.heartbeatInterval) return;
+    
+    this.log('Starting heartbeat system');
+    // Envoyer un heartbeat toutes les 45 secondes pour maintenir les réservations
+    this.heartbeatInterval = setInterval(async () => {
+      if (this.activeReservations.size > 0) {
+        try {
+          const blocks = Array.from(this.activeReservations);
+          await this.extendReservation(blocks);
+          this.log(`Heartbeat sent for ${blocks.length} blocks`);
+        } catch (e) {
+          console.warn('[ReservationManager] Heartbeat failed:', e);
+        }
+      }
+    }, 45000); // 45 secondes pour être sûr
+  }
+  
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      this.log('Heartbeat stopped');
+    }
+  }
+  
+  async extendReservation(blocks) {
+    // Essayer d'étendre, sinon re-réserver
+    try {
+      const r = await fetch('/.netlify/functions/reserve', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({ uid, blocks, ttl: 180000 })
+      });
+      
+      if (r.ok) {
+        const res = await r.json();
+        if (res.ok && res.locks) {
+          // Fusionner sans écraser les autres locks
+          locks = { ...locks, ...res.locks };
+          this.log(`Extended reservation for ${blocks.length} blocks`);
+          return true;
+        }
+      }
+    } catch (e) {
+      this.log('Failed to extend reservation:', e);
+    }
+    return false;
+  }
+  
+  addReservation(blocks) {
+    blocks.forEach(idx => this.activeReservations.add(idx));
+    this.startHeartbeat();
+    this.log(`Added ${blocks.length} blocks to active reservations`);
+  }
+  
+  removeReservation(blocks) {
+    blocks.forEach(idx => this.activeReservations.delete(idx));
+    if (this.activeReservations.size === 0) {
+      this.stopHeartbeat();
+    }
+    this.log(`Removed ${blocks.length} blocks from active reservations`);
+  }
+  
+  clearAll() {
+    this.activeReservations.clear();
+    this.stopHeartbeat();
+    this.log('Cleared all reservations');
+  }
+  
+  log(msg, ...args) {
+    if (this.debugMode) {
+      console.log('[ReservationManager]', msg, ...args);
+    }
+  }
+}
+
+const reservationManager = new ReservationManager();
 
 // ---------- Build grid ----------
 (function build(){
@@ -92,10 +180,23 @@ function hideInvalidRect(){ invalidEl.style.display='none'; }
 // ---------- Helpers ----------
 function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
 function rowColToIdx(r,c){ return r*N + c; }
+
+// FIX: Amélioration de isBlockedCell avec debug
 function isBlockedCell(idx){
   if (sold[idx]) return true;
   const l = locks[idx];
-  return !!(l && l.until > Date.now() && l.uid !== uid);
+  const now = Date.now();
+  const result = !!(l && l.until > now && l.uid !== uid);
+  
+  // Debug optionnel
+  if (l && reservationManager.debugMode) {
+    const remaining = Math.round((l.until - now) / 1000);
+    if (remaining < 30) { // Log si moins de 30s restantes
+      console.log(`Block ${idx}: ${remaining}s remaining, uid: ${l.uid === uid ? 'MINE' : 'OTHER'}`);
+    }
+  }
+  
+  return result;
 }
 
 function paintCell(idx){
@@ -235,32 +336,59 @@ function openModal(){
 }
 function closeModal(){ modal.classList.add('hidden'); }
 
+// FIX: Nettoyage des réservations amélioré
 document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
-  if (selected.size){ try { await unlock(Array.from(selected)); } catch {} }
-  closeModal(); clearSelection();
+  if (selected.size){ 
+    const blocks = Array.from(selected);
+    try { 
+      await unlock(blocks);
+      reservationManager.removeReservation(blocks); // AJOUT
+    } catch {} 
+  }
+  closeModal(); 
+  clearSelection();
 }));
+
 window.addEventListener('keydown', async (e)=>{
   if(e.key==='Escape'){
-    if (!modal.classList.contains('hidden') && selected.size){ try { await unlock(Array.from(selected)); } catch {} }
-    closeModal(); clearSelection();
+    if (!modal.classList.contains('hidden') && selected.size){ 
+      const blocks = Array.from(selected);
+      try { 
+        await unlock(blocks);
+        reservationManager.removeReservation(blocks); // AJOUT
+      } catch {} 
+    }
+    closeModal(); 
+    clearSelection();
   }
 });
 
+// FIX: buyBtn avec système de heartbeat
 buyBtn.addEventListener('click', async ()=>{
   if(!selected.size) return;
   const want = Array.from(selected);
   try{
+    console.log('[RESERVE] Attempting to reserve', want.length, 'blocks for 3 minutes');
     const got = await reserve(want);
+    
     if ((got.conflicts && got.conflicts.length>0) || (got.locked && got.locked.length !== want.length)){
+      console.warn('[RESERVE] Conflicts or incomplete lock:', got);
       const rect = rectFromIndices(want);
       if (rect) showInvalidRect(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
       clearSelection(); paintAll();
       return;
     }
+    
     clearSelection();
     for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
+    
+    // AJOUT: Démarrer le système de heartbeat
+    reservationManager.addReservation(got.locked);
+    console.log('[RESERVE] Success! Started heartbeat for', got.locked.length, 'blocks');
+    
     openModal();
   }catch(e){
+    console.error('[RESERVE] Failed:', e);
     alert('Reservation failed: ' + (e?.message || e));
   }
 });
@@ -287,7 +415,13 @@ form.addEventListener('submit', async (e)=>{
     }
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
     sold = res.soldMap || sold;
-    try{ await unlock(blocks); }catch{}
+    
+    // FIX: Nettoyer les réservations après finalisation
+    try{ 
+      await unlock(blocks);
+      reservationManager.removeReservation(blocks);
+    }catch{}
+    
     clearSelection(); paintAll(); closeModal();
   }catch(err){
     alert('Finalize failed: '+(err?.message||err));
@@ -306,51 +440,114 @@ function rectFromIndices(arr){
   return { r0,c0,r1,c1 };
 }
 
+// FIX: reserve() avec debug amélioré
 async function reserve(indices){
-   const r=await fetch('/.netlify/functions/reserve',{
+  const startTime = Date.now();
+  console.log('[RESERVE] Starting reservation for blocks:', indices);
+  console.log('[RESERVE] Requesting TTL: 180000ms (3 minutes)');
+  
+  const r=await fetch('/.netlify/functions/reserve',{
     method:'POST',
     headers:{'content-type':'application/json'},
-     body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
-   });
-   const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-   locks = res.locks || locks; paintAll(); return res;
-}
-async function unlock(indices){
-  const r=await fetch('/.netlify/functions/unlock',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks: indices }) });
-  const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-  locks = res.locks || locks; paintAll(); return res;
+    body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
+  });
+  
+  const res=await r.json(); 
+  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+  
+  // Debug: Vérifier les timestamps retournés
+  if (res.locks) {
+    console.log('[RESERVE] Server response locks:');
+    for (const [idx, lock] of Object.entries(res.locks)) {
+      if (indices.includes(parseInt(idx))) {
+        const remainingMs = lock.until - Date.now();
+        const remainingSec = Math.round(remainingMs / 1000);
+        console.log(`  Block ${idx}: expires in ${remainingSec}s (${new Date(lock.until).toLocaleTimeString()})`);
+        
+        if (remainingMs < 120000) { // Moins de 2 minutes
+          console.warn(`  ⚠️ Block ${idx} expires too soon! Only ${remainingSec}s remaining`);
+        }
+      }
+    }
+  }
+  
+  locks = res.locks || locks; 
+  paintAll(); 
+  
+  const elapsed = Date.now() - startTime;
+  console.log(`[RESERVE] Completed in ${elapsed}ms`);
+  
+  return res;
 }
 
+async function unlock(indices){
+  console.log('[UNLOCK] Unlocking blocks:', indices);
+  const r=await fetch('/.netlify/functions/unlock',{ 
+    method:'POST', 
+    headers:{'content-type':'application/json'}, 
+    body: JSON.stringify({ uid, blocks: indices }) 
+  });
+  const res=await r.json(); 
+  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+  locks = res.locks || locks; 
+  paintAll(); 
+  console.log('[UNLOCK] Success');
+  return res;
+}
+
+// FIX: loadStatus() qui préserve les locks récents
 async function loadStatus(){
   try{ 
-    const r = await fetch('/.netlify/functions/status', {cache:'no-store'}); 
-    const s = await r.json(); 
-    if(s && s.ok){ 
-      sold = s.sold || {}; 
+    const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); 
+    const s=await r.json(); 
+    if(s&&s.ok){ 
+      sold=s.sold||{}; 
       
-      // CORRECTION : Ne pas écraser les locks si on en a des récents
+      // CORRECTION MAJEURE: Préserver les locks récents de l'utilisateur actuel
       if (s.locks) {
-        // Préserver les locks récents de l'utilisateur actuel
         const now = Date.now();
+        const preservedLocks = {};
+        
+        // Copier les locks du serveur
+        Object.assign(preservedLocks, s.locks);
+        
+        // Préserver les locks locaux récents de cet utilisateur
         for (const [idx, localLock] of Object.entries(locks)) {
           if (localLock.uid === uid && localLock.until > now) {
-            // Garder le lock local s'il est encore valide
-            if (!s.locks[idx] || s.locks[idx].until < localLock.until) {
-              s.locks[idx] = localLock;
+            const serverLock = s.locks[idx];
+            // Garder le lock local s'il est plus récent ou si le serveur n'en a pas
+            if (!serverLock || serverLock.until < localLock.until) {
+              preservedLocks[idx] = localLock;
+              console.log(`[LOAD_STATUS] Preserved local lock for block ${idx} (${Math.round((localLock.until - now)/1000)}s remaining)`);
             }
           }
         }
-        locks = s.locks;
+        
+        locks = preservedLocks;
       }
     } 
   }
-  catch(e) { console.warn('loadStatus failed:', e); }
+  catch(e) { 
+    console.warn('[LOAD_STATUS] Failed:', e);
+  }
 }
-(async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
+
+// FIX: Initialisation avec polling réduit
+(async function init(){ 
+  await loadStatus(); 
+  paintAll(); 
+  
+  // CHANGEMENT: Polling moins fréquent pour éviter les conflicts
+  setInterval(async()=>{ 
+    await loadStatus(); 
+    paintAll(); 
+  }, 8000); // 8 secondes au lieu de 2.5
+})();
 
 // Debug marker to verify correct file is loaded
 window.__hasForbiddenIconOverlay = true;
-console.log('app.js: forbidden icon overlay patch loaded');
+window.__hasReservationFix = true; // Nouveau marqueur
+console.log('app.js: reservation system fixes loaded');
 window.regions = window.regions || {};
 
 function getRegionForIndex(idx){
@@ -383,7 +580,6 @@ function renderAllRegionsOnce(){
 // Example hook: call this after fetching status (sold/locks/regions)
 window.renderAllRegionsOnce = renderAllRegionsOnce;
 
-
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   let link = linkInput.value.trim();
@@ -392,6 +588,7 @@ form.addEventListener('submit', async (e) => {
   }
   // ... puis envoie { linkUrl: link, name, blocks, ... } à /finalize
 });
+
 // ---- Render regions (one overlay per region) ----
 function renderRegions() {
   const grid = document.getElementById('grid');
@@ -437,7 +634,7 @@ function renderRegions() {
     });
     grid.appendChild(a);
   }
-  // S’assurer que la grille est au-dessus du header
+  // S'assurer que la grille est au-dessus du header
   grid.style.position = 'relative';
   grid.style.zIndex = 2;
 }
@@ -455,7 +652,7 @@ window.renderRegions = renderRegions;
   } catch (e) { console.warn('[regions] initial load failed', e); }
 })();
 
-// rafraîchit périodiquement (tu peux mettre 5000 ms si tu veux)
+// rafraîchit périodiquement
 window.__regionsPoll && clearInterval(window.__regionsPoll);
 window.__regionsPoll = setInterval(async () => {
   try {
@@ -552,9 +749,6 @@ window.__regionsPoll = setInterval(async () => {
   }
 
   function getSelectedIndices(){
-    /*if (window.selected && typeof window.selected.size === 'number') {
-      return Array.from(window.selected);
-    }*/
     return Array.from(document.querySelectorAll('.cell.sel')).map(el => +el.dataset.idx);
   }
 
@@ -575,7 +769,14 @@ window.__regionsPoll = setInterval(async () => {
       body: JSON.stringify({ uid, name, linkUrl, blocks })
     });
     const out = await fRes.json();
-    if (!out.ok) { alert(out.error || 'Finalize failed'); return; }
+    if (!out.ok) { 
+      alert(out.error || 'Finalize failed'); 
+      confirmBtn.disabled = false;
+      return; 
+    }
+
+    // FIX: Nettoyer les réservations après finalisation réussie
+    reservationManager.removeReservation(blocks);
 
     try {
       const file = fileInput && fileInput.files && fileInput.files[0];
@@ -601,10 +802,6 @@ window.__regionsPoll = setInterval(async () => {
     confirmBtn.disabled = false;
   }
 
-  //if (!confirmBtn.__iwBound){
-    //confirmBtn.addEventListener('click', (ev) => { ev.preventDefault(); doFinalizeAndUpload(); });
-    //confirmBtn.__iwBound = true;
-  //}
   if (cancelBtn && !cancelBtn.__iwBound){
     cancelBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
@@ -615,3 +812,27 @@ window.__regionsPoll = setInterval(async () => {
 
   window.refreshStatus().catch(()=>{});
 })();
+
+// ========== DEBUG UTILITIES ==========
+// Console command pour voir l'état des réservations
+window.debugReservations = function() {
+  console.log('=== RESERVATION DEBUG ===');
+  console.log('Active reservations:', Array.from(reservationManager.activeReservations));
+  console.log('Current locks:');
+  const now = Date.now();
+  for (const [idx, lock] of Object.entries(locks)) {
+    const remaining = Math.round((lock.until - now) / 1000);
+    const status = remaining > 0 ? `${remaining}s remaining` : 'EXPIRED';
+    const owner = lock.uid === uid ? 'MINE' : 'OTHER';
+    console.log(`  Block ${idx}: ${status} (${owner})`);
+  }
+  console.log('Selected blocks:', Array.from(selected));
+  console.log('Heartbeat active:', !!reservationManager.heartbeatInterval);
+};
+
+// Exposer le reservationManager pour debug
+window.reservationManager = reservationManager;
+
+console.log('✅ app.js loaded with reservation fixes');
+console.log('💡 Use window.debugReservations() to see current state');
+console.log('💡 Use reservationManager.debugMode = false to reduce logs');
