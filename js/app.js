@@ -393,15 +393,23 @@ function rectFromIndices(arr){
   return { r0,c0,r1,c1 };
 }
 
+// Remplacez le début de loadStatus() par ceci pour voir la réponse brute :
+
 async function loadStatus(){
   console.log('🔄 [loadStatus] DÉBUT');
   try{
     const r = await fetch('/.netlify/functions/status',{cache:'no-store'});
     const s = await r.json();
-    console.log('📡 [loadStatus] Réponse serveur:', {
-      ok: s?.ok,
-      locksCount: Object.keys(s?.locks || {}).length,
-      soldCount: Object.keys(s?.sold || {}).length
+    
+    // 🔍 DEBUG COMPLET de la réponse serveur
+    console.log('📡 [loadStatus] RÉPONSE SERVEUR COMPLÈTE:', {
+      httpStatus: r.status,
+      responseOk: s?.ok,
+      rawResponse: s, // ← TOUTE la réponse
+      locksRaw: s?.locks, // ← Les locks bruts
+      locksType: typeof s?.locks,
+      locksIsArray: Array.isArray(s?.locks),
+      locksKeys: s?.locks ? Object.keys(s.locks) : 'pas d\'objet'
     });
     
     if(s && s.ok){
@@ -411,7 +419,12 @@ async function loadStatus(){
 
       // Verrous entrants du serveur
       const incoming = s.locks || {};
-      console.log('🔒 [loadStatus] LOCKS entrants:', Object.keys(incoming).length);
+      console.log('🔒 [loadStatus] LOCKS entrants APRÈS parsing:', {
+        incoming: incoming,
+        type: typeof incoming,
+        keys: Object.keys(incoming),
+        entries: Object.entries(incoming).slice(0, 3) // Premiers 3 pour debug
+      });
 
       // Si on est dans la fenêtre de protection ou modale ouverte,
       const modalOpen = !modal.classList.contains('hidden');
@@ -422,7 +435,8 @@ async function loadStatus(){
         modalOpen,
         protectionActive,
         hasCurrentLock,
-        holdUntil: new Date(holdIncomingLocksUntil).toLocaleTimeString()
+        holdUntil: new Date(holdIncomingLocksUntil).toLocaleTimeString(),
+        now: new Date().toLocaleTimeString()
       });
       
       if (protectionActive || modalOpen || hasCurrentLock){
@@ -432,31 +446,30 @@ async function loadStatus(){
         return;
       }
 
+      // Debug avant merge
+      console.log('🔍 [AVANT MERGE] État actuel:', {
+        locksAvant: Object.keys(locks).length,
+        incomingLocks: Object.keys(incoming).length,
+        premierLockLocal: Object.entries(locks)[0] || 'aucun',
+        premierLockIncoming: Object.entries(incoming)[0] || 'aucun'
+      });
+
       // Sinon, on fusionne de façon sûre : local > serveur
       const oldLocks = { ...locks };
-      console.log('🔍 [AVANT MERGE] État actuel:', {
-      locksAvant: Object.keys(locks).length,
-      incomingLocks: Object.keys(incoming).length,
-      premierLockLocal: Object.entries(locks)[0] || 'aucun',
-      premierLockIncoming: Object.entries(incoming)[0] || 'aucun'
-      });
       locks = (typeof mergeLocksPreferLocal === 'function')
         ? mergeLocksPreferLocal(locks, incoming)
         : incoming;
       
-      //console.log('🔄 [loadStatus] MERGE:', {
-        //avant: Object.keys(oldLocks).length,
-        //serveur: Object.keys(incoming).length,
-        //après: Object.keys(locks).length
-      //});
       console.log('🔍 [APRÈS MERGE] Nouvel état:', {
-  locksAprès: Object.keys(locks).length,
-  premierLock: Object.entries(locks)[0] || 'aucun'
-});
+        locksAprès: Object.keys(locks).length,
+        premierLock: Object.entries(locks)[0] || 'aucun'
+      });
       
       // Synchroniser window.locks avec locks
       window.locks = { ...locks };
       console.log('🌐 [loadStatus] window.locks synchronisé');
+    } else {
+      console.warn('⚠️ [loadStatus] Réponse serveur invalide:', s);
     }
   } catch(e) {
     console.error('❌ [loadStatus] ERREUR:', e);
