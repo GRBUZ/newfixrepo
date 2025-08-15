@@ -196,20 +196,17 @@ function openModal(){
   const selectedPixels = selected.size * 100;
   const total = selectedPixels * currentPrice;
   modalStats.textContent = `${formatInt(selectedPixels)} px — ${formatMoney(total)}`;
-  // start heartbeat when modal is open and we have a lock
-  if (currentLock.length) startHeartbeat();
-  if (currentLock && currentLock.length){
-  // démarre le heartbeat toutes les 3 s pour rallonger côté serveur
-  if (heartbeat) clearInterval(heartbeat);
-  heartbeat = setInterval(async ()=>{
-    try { await reserve(currentLock); } catch {}
-  }, 3000);
+  
+  // ✅ UN SEUL heartbeat !
+  if (currentLock.length) {
+    startHeartbeat();
+    console.log('[MODAL] Started heartbeat for', currentLock.length, 'blocks');
+  }
 }
 
-}
 function closeModal(){ 
-  modal.classList.add('hidden'); stopHeartbeat(); 
-  if (heartbeat){ clearInterval(heartbeat); heartbeat = null; }
+  modal.classList.add('hidden'); 
+  stopHeartbeat(); // ← C'est suffisant, pas besoin de répéter
 }
 
 document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
@@ -222,10 +219,10 @@ window.addEventListener('keydown', async (e)=>{
     if (!modal.classList.contains('hidden') && selected.size){ try { await unlock(Array.from(selected)); } catch {} }
     currentLock = []; stopHeartbeat();
     currentLock = [];
-if (heartbeat){ clearInterval(heartbeat); heartbeat = null; }
+    if (heartbeat){ clearInterval(heartbeat); heartbeat = null; }
     closeModal();
     
- clearSelection();
+     clearSelection();
   }
 });
 
