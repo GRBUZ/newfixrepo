@@ -4435,7 +4435,148 @@
       "regionId": "r_mebpu8us_uotf"
     }
   },
-  "locks": {},
+  "locks": {
+    "5": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "6": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "7": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "8": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "9": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "10": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "11": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "105": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "106": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "107": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "108": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "109": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "110": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "111": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "205": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "206": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "207": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "208": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "209": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "210": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "211": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "305": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "306": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "307": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "308": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "309": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "310": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "311": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "405": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "406": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "407": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "408": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "409": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "410": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    },
+    "411": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755259182027
+    }
+  },
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
