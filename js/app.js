@@ -339,8 +339,10 @@ async function loadStatus(){
       // on NE TOUCHE PAS aux locks (on ne fait pas clignoter)
       const modalOpen = !modal.classList.contains('hidden');
       if (Date.now() < holdIncomingLocksUntil || modalOpen || (currentLock && currentLock.length)){
-        // on ignore les locks entrants pendant cette fenêtre
-        return;
+      // on ignore les locks entrants pendant cette fenêtre, mais on rafraîchit l'affichage
+       paintAll();
+      return;
+      }
       }
 
       // Sinon, on fusionne de façon sûre : local > serveur
