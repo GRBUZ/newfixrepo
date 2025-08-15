@@ -1,13 +1,11 @@
-// Forbidden icon overlay — robust version
-// - Overlay appended AFTER cells to ensure it's on top
-// - Cell size computed from DOM (handles CSS changes)
-// - High z-index; ensure grid has position:relative
-// - No-holes selection logic retained
-// - FIXED: Reservation system that maintains 3-minute locks
 
+// app.js — clean version (locks stable, single finalize path, no duplicate listeners)
+
+// ===== Grid & constants =====
 const N = 100;
 const TOTAL_PIXELS = 1_000_000;
 
+// DOM refs
 const grid = document.getElementById('grid');
 const buyBtn = document.getElementById('buyBtn');
 const priceLine = document.getElementById('priceLine');
@@ -21,107 +19,37 @@ const emailInput = document.getElementById('email');
 const confirmBtn = document.getElementById('confirm');
 const modalStats = document.getElementById('modalStats');
 
+// ===== Utils =====
 function formatInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-function formatMoney(n){ const [i,d]=n.toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
+function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
 
-const uid = (()=>{ const k='iw_uid'; let v=localStorage.getItem(k); if(!v){ v=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)); localStorage.setItem(k,v);} return v; })();
+// Single UID, persisted
+const uid = (()=>{ const k='iw_uid'; let v=localStorage.getItem(k); if(!v){ v=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)); localStorage.setItem(k,v);} window.uid=v; return v; })();
 
-let sold = {};   // { idx: { name, linkUrl, ts, imageUrl?, rect? } }
+// State
+let sold = {};   // { idx: { name, linkUrl, ts, imageUrl?, rect?, regionId? } }
 let locks = {};  // { idx: { uid, until } }
 let selected = new Set();
 
-// drag state
+// Freeze/merge control to avoid /status overwriting our fresh locks
+let locksFreezeUntil = 0;
+function mergeLocksPreferLocal(local, incoming) {
+  const now = Date.now();
+  const out = { ...(incoming || {}) };
+  for (const [k, l] of Object.entries(local || {})) {
+    if (!l) continue;
+    if (l.uid === uid && l.until > now) {
+      if (!out[k] || (out[k].until || 0) < l.until) out[k] = l;
+    }
+  }
+  return out;
+}
+
+// Drag state
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;
 
-// ========== RESERVATION MANAGER - FIX PRINCIPAL ==========
-class ReservationManager {
-  constructor() {
-    this.activeReservations = new Set();
-    this.heartbeatInterval = null;
-    this.debugMode = true; // Pour voir ce qui se passe
-  }
-  
-  startHeartbeat() {
-    if (this.heartbeatInterval) return;
-    
-    this.log('Starting heartbeat system');
-    // Envoyer un heartbeat toutes les 45 secondes pour maintenir les réservations
-    this.heartbeatInterval = setInterval(async () => {
-      if (this.activeReservations.size > 0) {
-        try {
-          const blocks = Array.from(this.activeReservations);
-          await this.extendReservation(blocks);
-          this.log(`Heartbeat sent for ${blocks.length} blocks`);
-        } catch (e) {
-          console.warn('[ReservationManager] Heartbeat failed:', e);
-        }
-      }
-    }, 45000); // 45 secondes pour être sûr
-  }
-  
-  stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-      this.log('Heartbeat stopped');
-    }
-  }
-  
-  async extendReservation(blocks) {
-    // Essayer d'étendre, sinon re-réserver
-    try {
-      const r = await fetch('/.netlify/functions/reserve', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({ uid, blocks, ttl: 180000 })
-      });
-      
-      if (r.ok) {
-        const res = await r.json();
-        if (res.ok && res.locks) {
-          // Fusionner sans écraser les autres locks
-          locks = { ...locks, ...res.locks };
-          this.log(`Extended reservation for ${blocks.length} blocks`);
-          return true;
-        }
-      }
-    } catch (e) {
-      this.log('Failed to extend reservation:', e);
-    }
-    return false;
-  }
-  
-  addReservation(blocks) {
-    blocks.forEach(idx => this.activeReservations.add(idx));
-    this.startHeartbeat();
-    this.log(`Added ${blocks.length} blocks to active reservations`);
-  }
-  
-  removeReservation(blocks) {
-    blocks.forEach(idx => this.activeReservations.delete(idx));
-    if (this.activeReservations.size === 0) {
-      this.stopHeartbeat();
-    }
-    this.log(`Removed ${blocks.length} blocks from active reservations`);
-  }
-  
-  clearAll() {
-    this.activeReservations.clear();
-    this.stopHeartbeat();
-    this.log('Cleared all reservations');
-  }
-  
-  log(msg, ...args) {
-    if (this.debugMode) {
-      console.log('[ReservationManager]', msg, ...args);
-    }
-  }
-}
-
-const reservationManager = new ReservationManager();
-
-// ---------- Build grid ----------
+// ===== Build grid =====
 (function build(){
   const frag=document.createDocumentFragment();
   for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='cell'; d.dataset.idx=i; frag.appendChild(d); }
@@ -130,7 +58,7 @@ const reservationManager = new ReservationManager();
   if (cs.position === 'static') grid.style.position = 'relative';
 })();
 
-// ---------- Overlay (added AFTER cells so it's on top) ----------
+// ===== Invalid selection overlay =====
 const invalidEl = document.createElement('div');
 invalidEl.id = 'invalidRect';
 Object.assign(invalidEl.style, {
@@ -177,26 +105,13 @@ function showInvalidRect(r0,c0,r1,c1, ttl=900){
 }
 function hideInvalidRect(){ invalidEl.style.display='none'; }
 
-// ---------- Helpers ----------
+// ===== Helpers =====
 function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
 function rowColToIdx(r,c){ return r*N + c; }
-
-// FIX: Amélioration de isBlockedCell avec debug
 function isBlockedCell(idx){
   if (sold[idx]) return true;
   const l = locks[idx];
-  const now = Date.now();
-  const result = !!(l && l.until > now && l.uid !== uid);
-  
-  // Debug optionnel
-  if (l && reservationManager.debugMode) {
-    const remaining = Math.round((l.until - now) / 1000);
-    if (remaining < 30) { // Log si moins de 30s restantes
-      console.log(`Block ${idx}: ${remaining}s remaining, uid: ${l.uid === uid ? 'MINE' : 'OTHER'}`);
-    }
-  }
-  
-  return result;
+  return !!(l && l.until > Date.now() && l.uid !== uid);
 }
 
 function paintCell(idx){
@@ -294,14 +209,13 @@ function toggleCell(idx){
 
 function idxFromClientXY(x,y){
   const rect=grid.getBoundingClientRect();
-  // compute cell size from DOM
   const { w:CW, h:CH } = getCellSize();
   const gx=Math.floor((x-rect.left)/CW), gy=Math.floor((y-rect.top)/CH);
   if (gx<0||gy<0||gx>=N||gy>=N) return -1;
   return gy*N + gx;
 }
 
-// Drag handlers + click suppression
+// ===== Mouse / Drag =====
 grid.addEventListener('mousedown',(e)=>{
   const idx=idxFromClientXY(e.clientX,e.clientY); if(idx<0) return;
   isDragging=true; dragStartIdx=idx; lastDragIdx=idx; movedDuringDrag=false; suppressNextClick=false;
@@ -316,7 +230,6 @@ window.addEventListener('mousemove',(e)=>{
 window.addEventListener('mouseup',()=>{
   if (isDragging){ suppressNextClick=movedDuringDrag; }
   isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1;
-  // overlay auto-hides via TTL
 });
 
 grid.addEventListener('click',(e)=>{
@@ -326,6 +239,7 @@ grid.addEventListener('click',(e)=>{
   toggleCell(idx);
 });
 
+// ===== Modal =====
 function openModal(){ 
   modal.classList.remove('hidden');
   const blocksSold=Object.keys(sold).length, pixelsSold=blocksSold*100;
@@ -336,69 +250,69 @@ function openModal(){
 }
 function closeModal(){ modal.classList.add('hidden'); }
 
-// FIX: Nettoyage des réservations amélioré
 document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
-  if (selected.size){ 
-    const blocks = Array.from(selected);
-    try { 
-      await unlock(blocks);
-      reservationManager.removeReservation(blocks); // AJOUT
-    } catch {} 
-  }
-  closeModal(); 
-  clearSelection();
+  if (selected.size){ try { await unlock(Array.from(selected)); } catch {} }
+  closeModal(); clearSelection();
 }));
-
 window.addEventListener('keydown', async (e)=>{
   if(e.key==='Escape'){
-    if (!modal.classList.contains('hidden') && selected.size){ 
-      const blocks = Array.from(selected);
-      try { 
-        await unlock(blocks);
-        reservationManager.removeReservation(blocks); // AJOUT
-      } catch {} 
-    }
-    closeModal(); 
-    clearSelection();
+    if (!modal.classList.contains('hidden') && selected.size){ try { await unlock(Array.from(selected)); } catch {} }
+    closeModal(); clearSelection();
   }
 });
 
-// FIX: buyBtn avec système de heartbeat
+// ===== Reserve / Unlock / Finalize =====
+async function reserve(indices){
+  const r = await fetch('/.netlify/functions/reserve', {
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
+  });
+  const res=await r.json();
+  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+  // Merge to preserve our fresh locks even if status polling is late
+  locks = mergeLocksPreferLocal(res.locks || {}, locks);
+  // Freeze incoming status for a few seconds (GitHub latency)
+  locksFreezeUntil = Date.now() + 5000;
+  paintAll();
+  return res;
+}
+async function unlock(indices){
+  const r=await fetch('/.netlify/functions/unlock',{
+    method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({ uid, blocks: indices })
+  });
+  const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+  locks = res.locks || locks; paintAll(); return res;
+}
+
 buyBtn.addEventListener('click', async ()=>{
   if(!selected.size) return;
   const want = Array.from(selected);
   try{
-    console.log('[RESERVE] Attempting to reserve', want.length, 'blocks for 3 minutes');
     const got = await reserve(want);
-    
     if ((got.conflicts && got.conflicts.length>0) || (got.locked && got.locked.length !== want.length)){
-      console.warn('[RESERVE] Conflicts or incomplete lock:', got);
       const rect = rectFromIndices(want);
       if (rect) showInvalidRect(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
       clearSelection(); paintAll();
       return;
     }
-    
     clearSelection();
     for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
-    
-    // AJOUT: Démarrer le système de heartbeat
-    reservationManager.addReservation(got.locked);
-    console.log('[RESERVE] Success! Started heartbeat for', got.locked.length, 'blocks');
-    
     openModal();
   }catch(e){
-    console.error('[RESERVE] Failed:', e);
     alert('Reservation failed: ' + (e?.message || e));
   }
 });
 
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const linkUrl = linkInput.value.trim();
-  const name    = nameInput.value.trim();
-  const email   = emailInput.value.trim();
+  let linkUrl = linkInput.value.trim();
+  const name  = nameInput.value.trim();
+  const email = emailInput.value.trim();
   if(!linkUrl || !name || !email){ return; }
+  if (!/^https?:\/\//i.test(linkUrl)) linkUrl = 'https://' + linkUrl;
+
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
     const blocks = Array.from(selected);
@@ -415,13 +329,7 @@ form.addEventListener('submit', async (e)=>{
     }
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
     sold = res.soldMap || sold;
-    
-    // FIX: Nettoyer les réservations après finalisation
-    try{ 
-      await unlock(blocks);
-      reservationManager.removeReservation(blocks);
-    }catch{}
-    
+    try{ await unlock(blocks); }catch{}
     clearSelection(); paintAll(); closeModal();
   }catch(err){
     alert('Finalize failed: '+(err?.message||err));
@@ -440,183 +348,48 @@ function rectFromIndices(arr){
   return { r0,c0,r1,c1 };
 }
 
-// FIX: reserve() avec debug amélioré
-async function reserve(indices){
-  const startTime = Date.now();
-  console.log('[RESERVE] Starting reservation for blocks:', indices);
-  console.log('[RESERVE] Requesting TTL: 180000ms (3 minutes)');
-  
-  const r=await fetch('/.netlify/functions/reserve',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
-  });
-  
-  const res=await r.json(); 
-  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-  
-  // Debug: Vérifier les timestamps retournés
-  if (res.locks) {
-    console.log('[RESERVE] Server response locks:');
-    for (const [idx, lock] of Object.entries(res.locks)) {
-      if (indices.includes(parseInt(idx))) {
-        const remainingMs = lock.until - Date.now();
-        const remainingSec = Math.round(remainingMs / 1000);
-        console.log(`  Block ${idx}: expires in ${remainingSec}s (${new Date(lock.until).toLocaleTimeString()})`);
-        
-        if (remainingMs < 120000) { // Moins de 2 minutes
-          console.warn(`  ⚠️ Block ${idx} expires too soon! Only ${remainingSec}s remaining`);
-        }
-      }
-    }
-  }
-  
-  locks = res.locks || locks; 
-  paintAll(); 
-  
-  const elapsed = Date.now() - startTime;
-  console.log(`[RESERVE] Completed in ${elapsed}ms`);
-  
-  return res;
-}
-
-async function unlock(indices){
-  console.log('[UNLOCK] Unlocking blocks:', indices);
-  const r=await fetch('/.netlify/functions/unlock',{ 
-    method:'POST', 
-    headers:{'content-type':'application/json'}, 
-    body: JSON.stringify({ uid, blocks: indices }) 
-  });
-  const res=await r.json(); 
-  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-  locks = res.locks || locks; 
-  paintAll(); 
-  console.log('[UNLOCK] Success');
-  return res;
-}
-
-// FIX: loadStatus() qui préserve les locks récents
+// ===== Status polling (safe merge) =====
 async function loadStatus(){
-  try{ 
+  try{
     const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); 
     const s=await r.json(); 
-    if(s&&s.ok){ 
-      sold=s.sold||{}; 
-      
-      // CORRECTION MAJEURE: Préserver les locks récents de l'utilisateur actuel
-      if (s.locks) {
-        const now = Date.now();
-        const preservedLocks = {};
-        
-        // Copier les locks du serveur
-        Object.assign(preservedLocks, s.locks);
-        
-        // Préserver les locks locaux récents de cet utilisateur
-        for (const [idx, localLock] of Object.entries(locks)) {
-          if (localLock.uid === uid && localLock.until > now) {
-            const serverLock = s.locks[idx];
-            // Garder le lock local s'il est plus récent ou si le serveur n'en a pas
-            if (!serverLock || serverLock.until < localLock.until) {
-              preservedLocks[idx] = localLock;
-              console.log(`[LOAD_STATUS] Preserved local lock for block ${idx} (${Math.round((localLock.until - now)/1000)}s remaining)`);
-            }
-          }
-        }
-        
-        locks = preservedLocks;
+    if(s&&s.ok){
+      sold = s.sold || {};
+      const incoming = s.locks || {};
+      // During freeze, prefer our local locks so they don't "blink off"
+      if (Date.now() < locksFreezeUntil) {
+        locks = mergeLocksPreferLocal(locks, incoming);
+      } else {
+        // After freeze, still merge to preserve our longer local locks (same uid)
+        locks = mergeLocksPreferLocal(locks, incoming);
       }
-    } 
-  }
-  catch(e) { 
-    console.warn('[LOAD_STATUS] Failed:', e);
-  }
+    }
+  } catch{}
 }
+(async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
 
-// FIX: Initialisation avec polling réduit
-(async function init(){ 
-  await loadStatus(); 
-  paintAll(); 
-  
-  // CHANGEMENT: Polling moins fréquent pour éviter les conflicts
-  setInterval(async()=>{ 
-    await loadStatus(); 
-    paintAll(); 
-  }, 8000); // 8 secondes au lieu de 2.5
-})();
-
-// Debug marker to verify correct file is loaded
+// Debug marker
 window.__hasForbiddenIconOverlay = true;
-window.__hasReservationFix = true; // Nouveau marqueur
-console.log('app.js: reservation system fixes loaded');
+console.log('app.js: clean build loaded');
 window.regions = window.regions || {};
 
-function getRegionForIndex(idx){
-  const info = sold[idx];
-  if (!info) return null;
-  const reg = info.regionId && regions ? regions[info.regionId] : null;
-  if (reg && reg.rect && (reg.imageUrl || reg.imageUrl === "")) return { info, region: reg };
-  // Back-compat legacy
-  const legacyRect = info.rect, legacyImage = info.imageUrl;
-  if (legacyRect && legacyImage !== undefined) {
-    return { info, region: { imageUrl: legacyImage, rect: legacyRect } };
-  }
-  return { info, region: null };
-}
-
-function renderAllRegionsOnce(){
-  if (!regions) return;
-  const seen = new Set();
-  for (const [idxStr, s] of Object.entries(sold)){
-    const rid = s.regionId;
-    if (!rid || seen.has(rid)) continue;
-    const reg = regions[rid];
-    if (!reg || !reg.rect) continue;
-    if (typeof window.drawRegionOverlay === 'function'){
-      window.drawRegionOverlay(reg, rid);
-    }
-    seen.add(rid);
-  }
-}
-// Example hook: call this after fetching status (sold/locks/regions)
-window.renderAllRegionsOnce = renderAllRegionsOnce;
-
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  let link = linkInput.value.trim();
-  if (link && !/^https?:\/\//i.test(link)) {
-    link = 'https://' + link;     // confort côté client
-  }
-  // ... puis envoie { linkUrl: link, name, blocks, ... } à /finalize
-});
-
-// ---- Render regions (one overlay per region) ----
+// ===== Regions overlay (unchanged) =====
 function renderRegions() {
   const grid = document.getElementById('grid');
   if (!grid) return;
-
-  // Nettoyer les overlays précédents
   grid.querySelectorAll('.region-overlay').forEach(n => n.remove());
-
   const firstCell = grid.querySelector('.cell');
-  const size = firstCell ? firstCell.offsetWidth : 10; // cellule (incl. bordure)
-
-  // Map regionId -> linkUrl (on prend le 1er bloc vendu qui a ce regionId)
+  const size = firstCell ? firstCell.offsetWidth : 10;
   const regionLink = {};
   for (const [idx, s] of Object.entries(window.sold || {})) {
-    if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) {
-      regionLink[s.regionId] = s.linkUrl;
-    }
+    if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) regionLink[s.regionId] = s.linkUrl;
   }
-
-  // Dessiner 1 overlay par région
   for (const [rid, reg] of Object.entries(window.regions || {})) {
     if (!reg || !reg.rect || !reg.imageUrl) continue;
-
     const { x, y, w, h } = reg.rect;
-    const idxTL = y * 100 + x; // top-left block index (N=100)
+    const idxTL = y * 100 + x;
     const tl = grid.querySelector(`.cell[data-idx="${idxTL}"]`);
     if (!tl) continue;
-
     const a = document.createElement('a');
     a.className = 'region-overlay';
     if (regionLink[rid]) { a.href = regionLink[rid]; a.target = '_blank'; a.rel = 'noopener nofollow'; }
@@ -634,13 +407,12 @@ function renderRegions() {
     });
     grid.appendChild(a);
   }
-  // S'assurer que la grille est au-dessus du header
   grid.style.position = 'relative';
   grid.style.zIndex = 2;
 }
 window.renderRegions = renderRegions;
 
-// ---- Auto-refresh status + render regions (safe, add-only) ----
+// Initial regions fetch + periodic refresh (15s)
 (async function regionsBootOnce(){
   try {
     const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
@@ -651,8 +423,6 @@ window.renderRegions = renderRegions;
     if (typeof window.renderRegions === 'function') window.renderRegions();
   } catch (e) { console.warn('[regions] initial load failed', e); }
 })();
-
-// rafraîchit périodiquement
 window.__regionsPoll && clearInterval(window.__regionsPoll);
 window.__regionsPoll = setInterval(async () => {
   try {
@@ -662,177 +432,5 @@ window.__regionsPoll = setInterval(async () => {
     window.locks   = data.locks   || {};
     window.regions = data.regions || {};
     if (typeof window.renderRegions === 'function') window.renderRegions();
-  } catch (e) { /* silencieux */ }
+  } catch (e) { /* silent */ }
 }, 15000);
-
-/* =====================
-   Upload + link imageUrl patch (safe to paste at END of js/app.js)
-   - Calls /finalize with {name, linkUrl, blocks}
-   - If #image has a file, POST it to /.netlify/functions/upload (FormData)
-   - Then refreshes status and calls renderRegions() (if defined)
-   - No picsum fallback; draws regions only when imageUrl exists
-   ===================== */
-
-(function IW_UploadLink_Patch(){
-  const grid        = document.getElementById('grid');
-  const modal       = document.getElementById('modal');
-  const form        = document.getElementById('form');
-  const confirmBtn  = document.getElementById('confirm');
-  const cancelBtn   = document.getElementById('cancel');
-  const nameInput   = document.getElementById('name');
-  const linkInput   = document.getElementById('link');
-  const emailInput  = document.getElementById('email');
-  const fileInput   = document.getElementById('image');  // <input type="file" id="image">
-
-  if (!grid || !form || !confirmBtn) {
-    console.warn('[IW patch] required elements not found, skipping init.');
-    return;
-  }
-
-  function normalizeUrl(u){
-    u = String(u||'').trim();
-    if (!u) return '';
-    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-    return u;
-  }
-
-  if (typeof window.renderRegions !== 'function') {
-    window.renderRegions = function renderRegions(){
-      const gridEl = document.getElementById('grid');
-      if (!gridEl) return;
-      gridEl.querySelectorAll('.region-overlay').forEach(n=>n.remove());
-
-      const firstCell = gridEl.querySelector('.cell');
-      const size = firstCell ? firstCell.offsetWidth : 10;
-
-      const regionLink = {};
-      for (const [idx, s] of Object.entries(window.sold||{})) {
-        if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) {
-          regionLink[s.regionId] = s.linkUrl;
-        }
-      }
-
-      for (const [rid, reg] of Object.entries(window.regions||{})) {
-        if (!reg || !reg.rect || !reg.imageUrl) continue;
-        const {x,y,w,h} = reg.rect;
-        const idxTL = y*100 + x;
-        const tl = gridEl.querySelector(`.cell[data-idx="${idxTL}"]`);
-        if (!tl) continue;
-
-        const a = document.createElement('a');
-        a.className = 'region-overlay';
-        if (regionLink[rid]) { a.href = regionLink[rid]; a.target = '_blank'; a.rel = 'noopener nofollow'; }
-        Object.assign(a.style, {
-          position:'absolute',
-          left: tl.offsetLeft+'px', top: tl.offsetTop+'px',
-          width: (w*size)+'px', height: (h*size)+'px',
-          backgroundImage: `url("${reg.imageUrl}")`,
-          backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-          zIndex: 999
-        });
-        gridEl.appendChild(a);
-      }
-      gridEl.style.position = 'relative';
-      gridEl.style.zIndex = 2;
-    };
-  }
-
-  if (typeof window.refreshStatus !== 'function') {
-    window.refreshStatus = async function refreshStatus(){
-      const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
-      const data = await res.json();
-      window.sold    = data.sold    || {};
-      window.locks   = data.locks   || {};
-      window.regions = data.regions || {};
-      if (typeof window.renderRegions === 'function') window.renderRegions();
-    };
-  }
-
-  function getSelectedIndices(){
-    return Array.from(document.querySelectorAll('.cell.sel')).map(el => +el.dataset.idx);
-  }
-
-  async function doFinalizeAndUpload(){
-    const name    = (nameInput && nameInput.value || '').trim();
-    const linkUrl = normalizeUrl(linkInput && linkInput.value);
-    const email   = (emailInput && emailInput.value || '').trim();
-    const blocks  = getSelectedIndices();
-
-    if (!blocks.length) { alert('Please select at least one block.'); return; }
-    if (!name || !linkUrl) { alert('Name and Profile URL are required.'); return; }
-
-    confirmBtn.disabled = true;
-
-    const fRes = await fetch('/.netlify/functions/finalize', {
-      method:'POST',
-      headers:{ 'content-type':'application/json' },
-      body: JSON.stringify({ uid, name, linkUrl, blocks })
-    });
-    const out = await fRes.json();
-    if (!out.ok) { 
-      alert(out.error || 'Finalize failed'); 
-      confirmBtn.disabled = false;
-      return; 
-    }
-
-    // FIX: Nettoyer les réservations après finalisation réussie
-    reservationManager.removeReservation(blocks);
-
-    try {
-      const file = fileInput && fileInput.files && fileInput.files[0];
-      if (file) {
-        if (!file.type.startsWith('image/')) throw new Error('Please upload an image file.');
-        if (file.size > 5*1024*1024) throw new Error('Max 5 MB.');
-        const fd = new FormData();
-        fd.append('file', file, file.name);
-        fd.append('regionId', out.regionId);
-        const upRes = await fetch('/.netlify/functions/upload', { method:'POST', body: fd });
-        const up = await upRes.json();
-        if (!up.ok) throw new Error(up.error || 'UPLOAD_FAILED');
-        console.log('[upload] image linked →', up.imageUrl);
-      } else {
-        console.log('[upload] no file provided — skipping imageUrl');
-      }
-    } catch (e) {
-      console.warn('[upload] failed:', e);
-    }
-
-    await window.refreshStatus().catch(()=>{});
-    if (modal && modal.classList) modal.classList.add('hidden');
-    confirmBtn.disabled = false;
-  }
-
-  if (cancelBtn && !cancelBtn.__iwBound){
-    cancelBtn.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      if (modal && modal.classList) modal.classList.add('hidden');
-    });
-    cancelBtn.__iwBound = true;
-  }
-
-  window.refreshStatus().catch(()=>{});
-})();
-
-// ========== DEBUG UTILITIES ==========
-// Console command pour voir l'état des réservations
-window.debugReservations = function() {
-  console.log('=== RESERVATION DEBUG ===');
-  console.log('Active reservations:', Array.from(reservationManager.activeReservations));
-  console.log('Current locks:');
-  const now = Date.now();
-  for (const [idx, lock] of Object.entries(locks)) {
-    const remaining = Math.round((lock.until - now) / 1000);
-    const status = remaining > 0 ? `${remaining}s remaining` : 'EXPIRED';
-    const owner = lock.uid === uid ? 'MINE' : 'OTHER';
-    console.log(`  Block ${idx}: ${status} (${owner})`);
-  }
-  console.log('Selected blocks:', Array.from(selected));
-  console.log('Heartbeat active:', !!reservationManager.heartbeatInterval);
-};
-
-// Exposer le reservationManager pour debug
-window.reservationManager = reservationManager;
-
-console.log('✅ app.js loaded with reservation fixes');
-console.log('💡 Use window.debugReservations() to see current state');
-console.log('💡 Use reservationManager.debugMode = false to reduce logs');
