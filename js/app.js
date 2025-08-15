@@ -307,9 +307,13 @@ function rectFromIndices(arr){
 }
 
 async function reserve(indices){
-  const r=await fetch('/.netlify/functions/reserve',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks, ttl: 180000}) });
-  const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-  locks = res.locks || locks; paintAll(); return res;
+   const r=await fetch('/.netlify/functions/reserve',{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+     body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
+   });
+   const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+   locks = res.locks || locks; paintAll(); return res;
 }
 async function unlock(indices){
   const r=await fetch('/.netlify/functions/unlock',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks: indices }) });
@@ -579,10 +583,10 @@ window.__regionsPoll = setInterval(async () => {
     confirmBtn.disabled = false;
   }
 
-  if (!confirmBtn.__iwBound){
-    confirmBtn.addEventListener('click', (ev) => { ev.preventDefault(); doFinalizeAndUpload(); });
-    confirmBtn.__iwBound = true;
-  }
+  //if (!confirmBtn.__iwBound){
+    //confirmBtn.addEventListener('click', (ev) => { ev.preventDefault(); doFinalizeAndUpload(); });
+    //confirmBtn.__iwBound = true;
+  //}
   if (cancelBtn && !cancelBtn.__iwBound){
     cancelBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
