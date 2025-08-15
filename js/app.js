@@ -25,6 +25,8 @@ const uid = (()=>{ const k='iw_uid'; let v=localStorage.getItem(k); if(!v){ v=(c
 let sold = {};
 let locks = {};
 let selected = new Set();
+let holdIncomingLocksUntil = 0;   // fenêtre pendant laquelle on NE TOUCHE PAS aux locks venant du serveur
+
 
 // Heartbeat while modal open
 let currentLock = [];
@@ -196,8 +198,19 @@ function openModal(){
   modalStats.textContent = `${formatInt(selectedPixels)} px — ${formatMoney(total)}`;
   // start heartbeat when modal is open and we have a lock
   if (currentLock.length) startHeartbeat();
+  if (currentLock && currentLock.length){
+  // démarre le heartbeat toutes les 3 s pour rallonger côté serveur
+  if (heartbeat) clearInterval(heartbeat);
+  heartbeat = setInterval(async ()=>{
+    try { await reserve(currentLock); } catch {}
+  }, 3000);
 }
-function closeModal(){ modal.classList.add('hidden'); stopHeartbeat(); }
+
+}
+function closeModal(){ 
+  modal.classList.add('hidden'); stopHeartbeat(); 
+  if (heartbeat){ clearInterval(heartbeat); heartbeat = null; }
+}
 
 document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
   if (selected.size){ try { await unlock(Array.from(selected)); } catch {} }
@@ -208,7 +221,11 @@ window.addEventListener('keydown', async (e)=>{
   if(e.key==='Escape'){
     if (!modal.classList.contains('hidden') && selected.size){ try { await unlock(Array.from(selected)); } catch {} }
     currentLock = []; stopHeartbeat();
-    closeModal(); clearSelection();
+    currentLock = [];
+if (heartbeat){ clearInterval(heartbeat); heartbeat = null; }
+    closeModal();
+    
+ clearSelection();
   }
 });
 
@@ -229,6 +246,11 @@ async function reserve(indices){
   // Merge incoming (others' locks) without dropping ours
   locks = mergeLocksPreferLocal(locks, res.locks || {});
   paintAll();
+  
+  // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
+  holdIncomingLocksUntil = Date.now() + 8000;
+  // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
+  currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
   return res;
 }
 async function unlock(indices){
@@ -307,15 +329,31 @@ function rectFromIndices(arr){
 
 async function loadStatus(){
   try{
-    const r=await fetch('/.netlify/functions/status',{cache:'no-store'}); 
-    const s=await r.json(); 
-    if(s&&s.ok){
+    const r = await fetch('/.netlify/functions/status',{cache:'no-store'});
+    const s = await r.json();
+    if(s && s.ok){
+      // Toujours mettre à jour SOLD
       sold = s.sold || {};
+
+      // Verrous entrants du serveur
       const incoming = s.locks || {};
-      locks = mergeLocksPreferLocal(locks, incoming); // local wins
+
+      // Si on est dans la fenêtre de protection ou modale ouverte,
+      // on NE TOUCHE PAS aux locks (on ne fait pas clignoter)
+      const modalOpen = !modal.classList.contains('hidden');
+      if (Date.now() < holdIncomingLocksUntil || modalOpen || (currentLock && currentLock.length)){
+        // on ignore les locks entrants pendant cette fenêtre
+        return;
+      }
+
+      // Sinon, on fusionne de façon sûre : local > serveur
+      locks = (typeof mergeLocksPreferLocal === 'function')
+        ? mergeLocksPreferLocal(locks, incoming)
+        : incoming;
     }
-  } catch{}
+  } catch {}
 }
+
 (async function init(){ await loadStatus(); paintAll(); setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); })();
 
 // Regions overlay (kept)
