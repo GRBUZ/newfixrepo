@@ -47,15 +47,34 @@ function mergeLocksPreferLocal(local, incoming){
   const now = Date.now();
   const out = {};
   
+  console.log('🔄 [MERGE] Début merge:', {
+    localCount: Object.keys(local || {}).length,
+    incomingCount: Object.keys(incoming || {}).length,
+    now: new Date(now).toLocaleTimeString()
+  });
+  
   // 1️⃣ D'abord, copier les locks entrants (état serveur = autoritaire pour les suppressions)
+  let incomingValid = 0;
   for (const [k, l] of Object.entries(incoming || {})) {
     if (l && l.until > now) {
       out[k] = l;
+      incomingValid++;
+      console.log(`📥 [MERGE] Incoming lock ${k}:`, {
+        uid: l.uid,
+        until: new Date(l.until).toLocaleTimeString(),
+        isOurs: l.uid === uid
+      });
+    } else if (l) {
+      console.log(`⏰ [MERGE] Incoming lock ${k} EXPIRÉ:`, {
+        uid: l.uid,
+        until: new Date(l.until).toLocaleTimeString(),
+        expired: l.until <= now
+      });
     }
-    // Si incoming[k] n'existe pas ou est expiré, alors k est libéré côté serveur
   }
   
   // 2️⃣ Ensuite, garder SEULEMENT nos propres locks locaux (qui ont priorité)
+  let localKept = 0;
   for (const [k, l] of Object.entries(local || {})) {
     if (!l) continue;
     
@@ -63,11 +82,33 @@ function mergeLocksPreferLocal(local, incoming){
     if (l.uid === uid && l.until > now) {
       // Notre lock local a priorité s'il est plus récent/long
       if (!out[k] || (out[k].until || 0) < l.until) {
+        console.log(`🏠 [MERGE] Keeping local lock ${k}:`, {
+          uid: l.uid,
+          until: new Date(l.until).toLocaleTimeString(),
+          overriding: !!out[k]
+        });
         out[k] = l;
+        localKept++;
       }
+    } else if (l.uid !== uid && l.until > now) {
+      console.log(`👤 [MERGE] Ignoring other's local lock ${k}:`, {
+        uid: l.uid,
+        until: new Date(l.until).toLocaleTimeString()
+      });
+    } else if (l.until <= now) {
+      console.log(`⏰ [MERGE] Local lock ${k} EXPIRÉ:`, {
+        uid: l.uid,
+        until: new Date(l.until).toLocaleTimeString()
+      });
     }
-    // Si c'est un lock d'un autre UID local, on l'ignore (le serveur fait foi)
   }
+  
+  console.log('✅ [MERGE] Résultat merge:', {
+    incomingValid,
+    localKept,
+    outputCount: Object.keys(out).length,
+    outputKeys: Object.keys(out).slice(0, 5) // Premiers 5 pour debug
+  });
   
   return out;
 }
@@ -393,15 +434,25 @@ async function loadStatus(){
 
       // Sinon, on fusionne de façon sûre : local > serveur
       const oldLocks = { ...locks };
+      console.log('🔍 [AVANT MERGE] État actuel:', {
+      locksAvant: Object.keys(locks).length,
+      incomingLocks: Object.keys(incoming).length,
+      premierLockLocal: Object.entries(locks)[0] || 'aucun',
+      premierLockIncoming: Object.entries(incoming)[0] || 'aucun'
+      });
       locks = (typeof mergeLocksPreferLocal === 'function')
         ? mergeLocksPreferLocal(locks, incoming)
         : incoming;
       
-      console.log('🔄 [loadStatus] MERGE:', {
-        avant: Object.keys(oldLocks).length,
-        serveur: Object.keys(incoming).length,
-        après: Object.keys(locks).length
-      });
+      //console.log('🔄 [loadStatus] MERGE:', {
+        //avant: Object.keys(oldLocks).length,
+        //serveur: Object.keys(incoming).length,
+        //après: Object.keys(locks).length
+      //});
+      console.log('🔍 [APRÈS MERGE] Nouvel état:', {
+  locksAprès: Object.keys(locks).length,
+  premierLock: Object.entries(locks)[0] || 'aucun'
+});
       
       // Synchroniser window.locks avec locks
       window.locks = { ...locks };
