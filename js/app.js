@@ -45,13 +45,30 @@ function stopHeartbeat(){
 // Merge helper: keep our local locks (same uid) if longer
 function mergeLocksPreferLocal(local, incoming){
   const now = Date.now();
-  const out = { ...(incoming||{}) };
-  for (const [k,l] of Object.entries(local||{})){
-    if (!l) continue;
-    if (l.uid === uid && l.until > now){
-      if (!out[k] || (out[k].until||0) < l.until) out[k] = l;
+  const out = {};
+  
+  // 1️⃣ D'abord, copier les locks entrants (état serveur = autoritaire pour les suppressions)
+  for (const [k, l] of Object.entries(incoming || {})) {
+    if (l && l.until > now) {
+      out[k] = l;
     }
+    // Si incoming[k] n'existe pas ou est expiré, alors k est libéré côté serveur
   }
+  
+  // 2️⃣ Ensuite, garder SEULEMENT nos propres locks locaux (qui ont priorité)
+  for (const [k, l] of Object.entries(local || {})) {
+    if (!l) continue;
+    
+    // Garder seulement nos locks valides
+    if (l.uid === uid && l.until > now) {
+      // Notre lock local a priorité s'il est plus récent/long
+      if (!out[k] || (out[k].until || 0) < l.until) {
+        out[k] = l;
+      }
+    }
+    // Si c'est un lock d'un autre UID local, on l'ignore (le serveur fait foi)
+  }
+  
   return out;
 }
 
