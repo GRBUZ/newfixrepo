@@ -6793,7 +6793,80 @@
       "regionId": "r_med2dt87_m6t9"
     }
   },
-  "locks": {},
+  "locks": {
+    "73": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "74": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "75": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "76": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "77": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "78": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "173": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "174": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "175": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "176": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "177": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "178": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "273": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "274": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "275": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "276": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "277": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    },
+    "278": {
+      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
+      "until": 1755369566872
+    }
+  },
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
