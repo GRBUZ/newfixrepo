@@ -1,7 +1,9 @@
 // app.js — robust locks: local-wins merge + heartbeat during modal
 // Anti-flicker pour les locks d’autrui
-const OTHERS_GRACE_MS = 7000;        // garde jusqu’à 7s si un poll manque le lock
 const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
+const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
+const othersHold = Object.create(null);    // idx -> expiresAt (timestamp)
+
 
 const N = 100;
 const TOTAL_PIXELS = 1_000_000;
@@ -465,23 +467,55 @@ async function loadStatus(){
   try{
     const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
     const s = await r.json();
-    if (s && s.ok) {
-      sold = s.sold || {};
+    if (!s || !s.ok) return;
 
-      const incoming = s.locks || {};
-      const now = Date.now();
-      const mineOnly = {};
-      for (const [k, l] of Object.entries(locks || {})) {
-        if (l && l.uid === uid && l.until > now) mineOnly[k] = l;
+    // 1) Màj des ventes
+    sold = s.sold || {};
+
+    const incoming = s.locks || {};
+    const now = Date.now();
+
+    // 2) Renouvelle la "dernière vue" pour les locks d'AUTRUI présents dans la réponse
+    for (const [k, l] of Object.entries(incoming)) {
+      if (!l) continue;
+      if (l.uid !== uid && l.until > now) {
+        othersHold[k] = now + OTHERS_GRACE_MS;  // on les gardera au moins jusque-là
       }
-
-      locks = mergeLocksPreferLocal(mineOnly, incoming);
-      paintAll();
     }
+
+    // 3) Purge des holds expirés (pas vus depuis > OTHERS_GRACE_MS)
+    for (const [k, exp] of Object.entries(othersHold)) {
+      if (exp <= now) delete othersHold[k];
+    }
+
+    // 4) Construit la carte de locks "visibles"
+    const visible = Object.create(null);
+
+    // a) base = locks renvoyés par le serveur (si encore valides)
+    for (const [k, l] of Object.entries(incoming)) {
+      if (l && l.until > now) visible[k] = { uid: l.uid, until: l.until };
+    }
+
+    // b) ajoute les holds (locks d'autrui "aperçus récemment") absents du snapshot courant
+    for (const [k, exp] of Object.entries(othersHold)) {
+      if (!visible[k]) visible[k] = { uid: 'other', until: exp };
+    }
+
+    // c) par-dessus, impose MES locks locaux s'ils sont plus longs/encore valides
+    for (const [k, l] of Object.entries(locks || {})) {
+      if (l && l.uid === uid && l.until > now) {
+        const cur = visible[k];
+        if (!cur || cur.uid !== uid || l.until > (cur.until || 0)) {
+          visible[k] = { uid: l.uid, until: l.until };
+        }
+      }
+    }
+
+    // 5) remplace la carte active et repeins
+    locks = visible;
+    paintAll();
   } catch {}
 }
-
-
 
 (async function init(){ 
   await loadStatus(); paintAll(); 
