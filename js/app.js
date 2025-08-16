@@ -67,100 +67,27 @@ function stopHeartbeat(){
 function mergeLocksPreferLocal(local, incoming){
   const now = Date.now();
   const out = {};
-  
-  console.log('🔄 [MERGE] Début merge équilibré:', {
-    localCount: Object.keys(local || {}).length,
-    incomingCount: Object.keys(incoming || {}).length,
-    now: new Date(now).toLocaleTimeString(),
-    browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME'
-  });
-  
-  // 1️⃣ D'abord traiter TOUS les locks (locaux + entrants) et ne garder que les valides
-  const allLocks = {};
-  
-  // Ajouter les locks locaux valides
-  let localValidCount = 0;
-  for (const [k, l] of Object.entries(local || {})) {
-    if (l && l.until > now) {
-      allLocks[k] = { ...l, source: 'local' };
-      localValidCount++;
-      console.log(`🏠 [MERGE] Local valide ${k}:`, {
-        uid: l.uid?.slice(0,8) + '...',
-        until: new Date(l.until).toLocaleTimeString(),
-        isOurs: l.uid === uid
-      });
-    } else if (l && l.until <= now) {
-      console.log(`⏰ [MERGE] Local EXPIRÉ ignoré ${k}:`, {
-        uid: l.uid?.slice(0,8) + '...',
-        until: new Date(l.until).toLocaleTimeString(),
-        expiredBy: Math.round((now - l.until) / 1000) + 's'
-      });
-    }
-  }
-  
-  // Ajouter les locks entrants valides
-  let incomingValidCount = 0;
+
+  // 1) Part à blanc avec CE QUE DIT LE SERVEUR (incoming) pour *tous les autres*.
   for (const [k, l] of Object.entries(incoming || {})) {
-    if (l && l.until > now) {
-      // Si on a déjà ce lock localement, garder le plus récent
-      const existing = allLocks[k];
-      if (!existing || l.until > existing.until) {
-        allLocks[k] = { ...l, source: 'incoming' };
-        incomingValidCount++;
-        console.log(`📡 [MERGE] Incoming valide ${k}:`, {
-          uid: l.uid?.slice(0,8) + '...',
-          until: new Date(l.until).toLocaleTimeString(),
-          isOurs: l.uid === uid,
-          replacing: existing ? 'local' : 'none'
-        });
-      } else {
-        console.log(`🏠 [MERGE] Local plus récent gardé ${k}:`, {
-          localUntil: new Date(existing.until).toLocaleTimeString(),
-          incomingUntil: new Date(l.until).toLocaleTimeString()
-        });
+    if (l && l.until > now) out[k] = { uid: l.uid, until: l.until };
+  }
+
+  // 2) Par-dessus, NE GARDE que *tes locks à toi* (uid === uid) s'ils sont encore valides
+  //    et éventuellement plus longs.
+  for (const [k, l] of Object.entries(local || {})) {
+    if (!l || l.until <= now) continue;
+    if (l.uid === uid) {
+      const cur = out[k];
+      if (!cur || cur.uid !== uid || l.until > cur.until) {
+        out[k] = { uid: l.uid, until: l.until };
       }
-    } else if (l && l.until <= now) {
-      console.log(`⏰ [MERGE] Incoming EXPIRÉ ignoré ${k}:`, {
-        uid: l.uid?.slice(0,8) + '...',
-        until: new Date(l.until).toLocaleTimeString(),
-        expiredBy: Math.round((now - l.until) / 1000) + 's'
-      });
     }
   }
-  
-  // 2️⃣ Appliquer la priorité : nos locks ont priorité absolue s'ils sont plus longs
-  let ourPriorityCount = 0;
-  for (const [k, lock] of Object.entries(allLocks)) {
-    if (lock.uid === uid) {
-      // C'est notre lock, on le garde toujours
-      out[k] = { uid: lock.uid, until: lock.until };
-      ourPriorityCount++;
-      console.log(`👑 [MERGE] Notre lock prioritaire ${k}:`, {
-        until: new Date(lock.until).toLocaleTimeString(),
-        source: lock.source
-      });
-    } else {
-      // Lock d'un autre user - on le garde seulement si on n'a pas de conflit
-      const ourLock = Object.entries(allLocks).find(([_, l]) => l.uid === uid);
-      out[k] = { uid: lock.uid, until: lock.until };
-      console.log(`👤 [MERGE] Lock autre user ${k}:`, {
-        uid: lock.uid?.slice(0,8) + '...',
-        until: new Date(lock.until).toLocaleTimeString(),
-        source: lock.source
-      });
-    }
-  }
-  
-  console.log('✅ [MERGE] Résultat équilibré:', {
-    localValidCount,
-    incomingValidCount, 
-    ourPriorityCount,
-    outputCount: Object.keys(out).length,
-    browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME'
-  });
-  
+
   return out;
 }
+
 
   
 
@@ -582,6 +509,15 @@ async function loadStatus(){
         console.log(`🧹 [loadStatus] ${expiredCount} locks expirés nettoyés`);
       }
       
+      
+
+    // ne garde en "local" que tes locks à toi (évite de traîner d’anciens locks d’autrui)
+    const mineOnly = {};
+    for (const [k, l] of Object.entries(locks || {})) {
+    if (l && l.uid === uid && l.until > now) {
+      mineOnly[k] = l;
+    }
+    }
       // Fusionner avec les locks nettoyés
       console.log('🔄 [loadStatus] Fusion avec nettoyage préalable:', {
         locksAvant: Object.keys(locks).length,
