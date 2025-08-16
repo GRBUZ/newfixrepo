@@ -358,3 +358,42 @@ main{display:flex;justify-content:center;padding:16px}
 /* (Option) évite que les boutons chevauchent trop la grille */
 main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
 
+/* Footer style assorti au header, mais plus léger */
+.site-footer{
+  margin-top: 24px;
+  background: linear-gradient(180deg,#c13abd 0%, #9b34d3 40%, #8a2cd9 100%);
+  color:#fff;
+  border-top: 1px solid rgba(255,255,255,0.25);
+}
+.footer-inner{
+  max-width:1100px;
+  margin:0 auto;
+  padding:12px 16px 16px;  /* compact */
+  text-align:center;
+}
+.footer-links{
+  display:flex;
+  justify-content:center;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-bottom:6px;
+}
+.footer-links a{
+  color:#fff;
+  text-decoration:none;
+  font-size:13px;
+  font-weight:700;
+  border-bottom:1px dashed rgba(255,255,255,0.6);
+}
+.footer-links a:hover{ border-bottom-color:#fff; }
+.footer-copy{
+  font-size:12px;
+  opacity:.9;
+}
+
+/* Option: version ultra-compacte */
+@media (max-width:760px){
+  .footer-links a{ font-size:12px; }
+  .footer-copy{ font-size:11px; }
+}
+
