@@ -418,19 +418,42 @@ async function reserve(indices){
   paintAll();
   
   // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
-  holdIncomingLocksUntil = Date.now() + 305000;
+  holdIncomingLocksUntil = Date.now() + 8000;
   // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
   currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
   return res;
 }
+
 async function unlock(indices){
-  const r=await fetch('/.netlify/functions/unlock',{
-    method:'POST', headers:{'content-type':'application/json'},
+  console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
+  
+  const r = await fetch('/.netlify/functions/unlock',{
+    method:'POST', 
+    headers:{'content-type':'application/json'},
     body: JSON.stringify({ uid, blocks: indices })
   });
-  const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-  locks = res.locks || locks; paintAll(); return res;
+  
+  console.log('🔓 [UNLOCK] Réponse HTTP:', r.status, r.ok);
+  
+  const res = await r.json(); 
+  console.log('🔓 [UNLOCK] Réponse serveur:', res);
+  
+  if(!r.ok || !res.ok) {
+    console.error('❌ [UNLOCK] Échec:', res.error || ('HTTP '+r.status));
+    throw new Error(res.error || ('HTTP '+r.status));
+  }
+  
+  // ✅ CORRECTION CRITIQUE : Mettre à jour les locks ET supprimer la protection
+  locks = res.locks || {}; 
+  holdIncomingLocksUntil = 0; // ✅ Supprimer immédiatement la protection !
+  
+  console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
+  console.log('🔄 [UNLOCK] Protection supprimée');
+  
+  paintAll(); 
+  return res;
 }
+
 
 buyBtn.addEventListener('click', async ()=>{
   if(!selected.size) return;
