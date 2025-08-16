@@ -20,7 +20,28 @@ const modalStats = document.getElementById('modalStats');
 function formatInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
 
-const uid = (()=>{ const k='iw_uid'; let v=localStorage.getItem(k); if(!v){ v=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)); localStorage.setItem(k,v);} window.uid=v; return v; })();
+  // 1. UID génération plus robuste pour Edge
+const uid = (()=>{ 
+    const k='iw_uid'; 
+    let v=localStorage.getItem(k); 
+    if(!v){ 
+        // Meilleure compatibilité Edge
+        if (window.crypto && window.crypto.randomUUID) {
+            v = crypto.randomUUID();
+        } else if (window.crypto && window.crypto.getRandomValues) {
+            // Fallback pour Edge anciennes versions
+            const arr = new Uint8Array(16);
+            crypto.getRandomValues(arr);
+            v = Array.from(arr, byte => byte.toString(16).padStart(2, '0')).join('');
+        } else {
+            // Fallback ultime
+            v = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        }
+        localStorage.setItem(k,v);
+    } 
+    window.uid=v; 
+    return v; 
+})();
 
 let sold = {};
 let locks = {};
