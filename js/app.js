@@ -64,6 +64,7 @@ function stopHeartbeat(){
 }
 
 // Merge helper: keep our local locks (same uid) if longer
+// 1. La fonction mergeLocksPreferLocal peut être trop restrictive
 function mergeLocksPreferLocal(local, incoming){
   const now = Date.now();
   const out = {};
@@ -71,64 +72,56 @@ function mergeLocksPreferLocal(local, incoming){
   console.log('🔄 [MERGE] Début merge:', {
     localCount: Object.keys(local || {}).length,
     incomingCount: Object.keys(incoming || {}).length,
-    now: new Date(now).toLocaleTimeString()
+    now: new Date(now).toLocaleTimeString(),
+    userAgent: navigator.userAgent.includes('Edg') ? 'EDGE' : 'OTHER'
   });
   
-  // 1️⃣ D'abord, copier les locks entrants (état serveur = autoritaire pour les suppressions)
+  // ⚠️ PROBLÈME : On copie d'abord les locks entrants, puis on les écrase avec les locaux
+  // Cela peut causer des problèmes de timing sur Edge
+  
+  // NOUVELLE APPROCHE - Copier TOUS les locks valides d'abord
   let incomingValid = 0;
+  let localOverrides = 0;
+  
+  // 1️⃣ D'abord, copier TOUS les locks entrants valides
   for (const [k, l] of Object.entries(incoming || {})) {
     if (l && l.until > now) {
       out[k] = l;
       incomingValid++;
       console.log(`📥 [MERGE] Incoming lock ${k}:`, {
-        uid: l.uid,
+        uid: l.uid?.slice(0,8) + '...',
         until: new Date(l.until).toLocaleTimeString(),
         isOurs: l.uid === uid
-      });
-    } else if (l) {
-      console.log(`⏰ [MERGE] Incoming lock ${k} EXPIRÉ:`, {
-        uid: l.uid,
-        until: new Date(l.until).toLocaleTimeString(),
-        expired: l.until <= now
       });
     }
   }
   
-  // 2️⃣ Ensuite, garder SEULEMENT nos propres locks locaux (qui ont priorité)
-  let localKept = 0;
+  // 2️⃣ Ensuite, écraser SEULEMENT avec nos propres locks locaux plus récents
   for (const [k, l] of Object.entries(local || {})) {
-    if (!l) continue;
+    if (!l || l.uid !== uid || l.until <= now) continue;
     
-    // Garder seulement nos locks valides
-    if (l.uid === uid && l.until > now) {
-      // Notre lock local a priorité s'il est plus récent/long
-      if (!out[k] || (out[k].until || 0) < l.until) {
-        console.log(`🏠 [MERGE] Keeping local lock ${k}:`, {
-          uid: l.uid,
-          until: new Date(l.until).toLocaleTimeString(),
-          overriding: !!out[k]
-        });
-        out[k] = l;
-        localKept++;
-      }
-    } else if (l.uid !== uid && l.until > now) {
-      console.log(`👤 [MERGE] Ignoring other's local lock ${k}:`, {
-        uid: l.uid,
-        until: new Date(l.until).toLocaleTimeString()
+    // Garder notre lock local s'il est plus récent OU si pas de conflit
+    const existingLock = out[k];
+    const shouldOverride = !existingLock || 
+                          existingLock.uid === uid || 
+                          l.until > existingLock.until;
+    
+    if (shouldOverride) {
+      console.log(`🏠 [MERGE] Local override ${k}:`, {
+        uid: l.uid?.slice(0,8) + '...',
+        until: new Date(l.until).toLocaleTimeString(),
+        replacing: existingLock ? existingLock.uid?.slice(0,8) + '...' : 'none'
       });
-    } else if (l.until <= now) {
-      console.log(`⏰ [MERGE] Local lock ${k} EXPIRÉ:`, {
-        uid: l.uid,
-        until: new Date(l.until).toLocaleTimeString()
-      });
+      out[k] = l;
+      localOverrides++;
     }
   }
   
   console.log('✅ [MERGE] Résultat merge:', {
     incomingValid,
-    localKept,
+    localOverrides,
     outputCount: Object.keys(out).length,
-    outputKeys: Object.keys(out).slice(0, 5) // Premiers 5 pour debug
+    browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'OTHER'
   });
   
   return out;
