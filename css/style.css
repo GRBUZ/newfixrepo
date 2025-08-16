@@ -308,4 +308,35 @@ main{display:flex;justify-content:center;padding:16px}
   .masthead-actions{ top: -18px; gap: 12px; }
 }
 
-.hero { position: sticky; top: 0; z-index: 10; }
+/* == Compact header sizes == */
+.masthead-title{
+  font-size: clamp(20px, 2.4vw, 24px);
+  margin: 8px 0 4px;
+}
+.masthead-inner{
+  padding: 12px 16px; /* un peu moins haut */
+}
+.masthead-tagline{
+  font-size: clamp(16px, 2vw, 20px);
+}
+.masthead-meta .pixels-left{
+  font-size: clamp(16px, 2vw, 20px);
+}
+.masthead-meta .price-line{
+  font-size: clamp(13px, 1.8vw, 16px);
+}
+.masthead-meta .note{
+  font-size: 12px;
+}
+
+/* Boutons un peu plus petits, même chevauchement */
+.pill{
+  font-size: 15px;
+  padding: 9px 16px;
+}
+.masthead-actions{ top: -18px; }
+
+@media (max-width:760px){
+  .masthead-actions{ top: -16px; }
+}
+
