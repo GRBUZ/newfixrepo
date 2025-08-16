@@ -446,83 +446,84 @@ function rectFromIndices(arr){
 
 // CORRECTION CRITIQUE : Nettoyer les locks expirés dans loadStatus
 async function loadStatus(){
-  console.log('🔄 [loadStatus] DÉBUT avec nettoyage - Browser:', navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME');
-  
+  console.log('🔄 [loadStatus] DÉBUT');
   try{
-    const r = await fetch('/.netlify/functions/status', {
-      cache:'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
-    
+    const r = await fetch('/.netlify/functions/status',{cache:'no-store'});
     const s = await r.json();
+    
+    // 🔍 DEBUG COMPLET de la réponse serveur
+    console.log('📡 [loadStatus] RÉPONSE SERVEUR COMPLÈTE:', {
+      httpStatus: r.status,
+      responseOk: s?.ok,
+      rawResponse: s, // ← TOUTE la réponse
+      locksRaw: s?.locks, // ← Les locks bruts
+      locksType: typeof s?.locks,
+      locksIsArray: Array.isArray(s?.locks),
+      locksKeys: s?.locks ? Object.keys(s.locks) : 'pas d\'objet'
+    });
     
     if(s && s.ok){
       // Toujours mettre à jour SOLD
       sold = s.sold || {};
-      
+      console.log('💰 [loadStatus] SOLD mis à jour:', Object.keys(sold).length, 'vendus');
+
+      // Verrous entrants du serveur
       const incoming = s.locks || {};
+      console.log('🔒 [loadStatus] LOCKS entrants APRÈS parsing:', {
+        incoming: incoming,
+        type: typeof incoming,
+        keys: Object.keys(incoming),
+        entries: Object.entries(incoming).slice(0, 3) // Premiers 3 pour debug
+      });
+
+      // Si on est dans la fenêtre de protection ou modale ouverte,
       const modalOpen = !modal.classList.contains('hidden');
       const protectionActive = Date.now() < holdIncomingLocksUntil;
-      const hasCurrentLock = currentLock && currentLock.length > 0;
+      const hasCurrentLock = currentLock && currentLock.length;
       
-      console.log('🛡️ [loadStatus] État protection:', {
+      console.log('🛡️ [loadStatus] Protection:', {
         modalOpen,
         protectionActive,
         hasCurrentLock,
-        browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME'
+        holdUntil: new Date(holdIncomingLocksUntil).toLocaleTimeString(),
+        now: new Date().toLocaleTimeString()
       });
       
-      if (modalOpen && hasCurrentLock) {
-        console.log('⏸️ [loadStatus] PROTECTION STRICTE - modal + currentLock');
+      if (protectionActive || modalOpen || hasCurrentLock){
+        console.log('⏸️ [loadStatus] PROTECTION ACTIVE - ignorant locks serveur');
+        console.log('🔒 [loadStatus] locks actuels:', Object.keys(locks).length);
         paintAll();
         return;
       }
-      
-      // ✅ NETTOYAGE PRÉVENTIF des locks expirés AVANT merge
-      const now = Date.now();
-      const cleanedLocal = {};
-      let expiredCount = 0;
-      
-      for (const [k, l] of Object.entries(locks)) {
-        if (l && l.until > now) {
-          cleanedLocal[k] = l;
-        } else if (l) {
-          expiredCount++;
-          console.log(`🧹 [loadStatus] Nettoyage lock expiré ${k}:`, {
-            uid: l.uid?.slice(0,8) + '...',
-            until: new Date(l.until).toLocaleTimeString(),
-            expiredBy: Math.round((now - l.until) / 1000) + 's'
-          });
-        }
-      }
-      
-      if (expiredCount > 0) {
-        console.log(`🧹 [loadStatus] ${expiredCount} locks expirés nettoyés`);
-      }
-      
-      // Fusionner avec les locks nettoyés
-      console.log('🔄 [loadStatus] Fusion avec nettoyage préalable:', {
+
+      // Debug avant merge
+      console.log('🔍 [AVANT MERGE] État actuel:', {
         locksAvant: Object.keys(locks).length,
-        locksNettoyés: Object.keys(cleanedLocal).length,
-        locksEntrants: Object.keys(incoming).length
+        incomingLocks: Object.keys(incoming).length,
+        premierLockLocal: Object.entries(locks)[0] || 'aucun',
+        premierLockIncoming: Object.entries(incoming)[0] || 'aucun'
+      });
+
+      // Sinon, on fusionne de façon sûre : local > serveur
+      const oldLocks = { ...locks };
+      locks = (typeof mergeLocksPreferLocal === 'function')
+        ? mergeLocksPreferLocal(locks, incoming)
+        : incoming;
+      
+      console.log('🔍 [APRÈS MERGE] Nouvel état:', {
+        locksAprès: Object.keys(locks).length,
+        premierLock: Object.entries(locks)[0] || 'aucun'
       });
       
-      locks = mergeLocksPreferLocal(cleanedLocal, incoming);
+      // Synchroniser window.locks avec locks
       window.locks = { ...locks };
-      
-      console.log('🔄 [loadStatus] Après fusion:', {
-        locksFinaux: Object.keys(locks).length
-      });
+      console.log('🌐 [loadStatus] window.locks synchronisé');
+    } else {
+      console.warn('⚠️ [loadStatus] Réponse serveur invalide:', s);
     }
   } catch(e) {
     console.error('❌ [loadStatus] ERREUR:', e);
   }
-  
-  paintAll();
   console.log('✅ [loadStatus] FIN');
 }
 
