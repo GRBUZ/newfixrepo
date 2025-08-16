@@ -1,4 +1,7 @@
 // app.js — robust locks: local-wins merge + heartbeat during modal
+// Anti-flicker pour les locks d’autrui
+const OTHERS_GRACE_MS = 7000;        // garde jusqu’à 7s si un poll manque le lock
+const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
 
 const N = 100;
 const TOTAL_PIXELS = 1_000_000;
@@ -66,21 +69,31 @@ function stopHeartbeat(){
 // Merge helper: keep our local locks (same uid) if longer
 function mergeLocksPreferLocal(local, incoming){
   const now = Date.now();
-  const out = {};
+  const out = Object.create(null);
 
-  // 1) Part à blanc avec CE QUE DIT LE SERVEUR (incoming) pour *tous les autres*.
-  for (const [k, l] of Object.entries(incoming || {})) {
-    if (l && l.until > now) out[k] = { uid: l.uid, until: l.until };
+  // 1) Mes locks à moi (uid === uid) : on garde s'ils sont encore valides
+  for (const [k, l] of Object.entries(local || {})) {
+    if (l && l.uid === uid && l.until > now) {
+      out[k] = { uid: l.uid, until: l.until };
+    }
   }
 
-  // 2) Par-dessus, NE GARDE que *tes locks à toi* (uid === uid) s'ils sont encore valides
-  //    et éventuellement plus longs.
+  // 2) Locks entrants (serveur) : vérité pour les autres + on note "vu à now"
+  for (const [k, l] of Object.entries(incoming || {})) {
+    if (l && l.until > now) {
+      out[k] = { uid: l.uid, until: l.until };
+      othersLastSeen[k] = now;
+    }
+  }
+
+  // 3) Si un lock d’autrui a "disparu" à ce poll, on le garde en grâce qq secondes
   for (const [k, l] of Object.entries(local || {})) {
-    if (!l || l.until <= now) continue;
-    if (l.uid === uid) {
-      const cur = out[k];
-      if (!cur || cur.uid !== uid || l.until > cur.until) {
-        out[k] = { uid: l.uid, until: l.until };
+    if (!out[k] && l && l.uid !== uid && l.until > now) {
+      const last = othersLastSeen[k] || 0;
+      if (now - last < OTHERS_GRACE_MS) {
+        out[k] = { uid: l.uid, until: l.until }; // on le maintient temporairement
+      } else {
+        delete othersLastSeen[k]; // grâce expirée : on laisse tomber
       }
     }
   }
@@ -88,8 +101,6 @@ function mergeLocksPreferLocal(local, incoming){
   return out;
 }
 
-
-  
 
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;
@@ -451,94 +462,25 @@ function rectFromIndices(arr){
 
 // CORRECTION CRITIQUE : Nettoyer les locks expirés dans loadStatus
 async function loadStatus(){
-  console.log('🔄 [loadStatus] DÉBUT avec nettoyage - Browser:', navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME');
-  
   try{
-    const r = await fetch('/.netlify/functions/status', {
-      cache:'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
-    
+    const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
     const s = await r.json();
-    
-    if(s && s.ok){
-      // Toujours mettre à jour SOLD
+    if (s && s.ok) {
       sold = s.sold || {};
-      
-      const incoming = s.locks || {};
-      const modalOpen = !modal.classList.contains('hidden');
-      const protectionActive = Date.now() < holdIncomingLocksUntil;
-      const hasCurrentLock = currentLock && currentLock.length > 0;
-      
-      console.log('🛡️ [loadStatus] État protection:', {
-        modalOpen,
-        protectionActive,
-        hasCurrentLock,
-        browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME'
-      });
-      
-      if (modalOpen && hasCurrentLock) {
-        console.log('⏸️ [loadStatus] PROTECTION STRICTE - modal + currentLock');
-        paintAll();
-        return;
-      }
-      
-      // ✅ NETTOYAGE PRÉVENTIF des locks expirés AVANT merge
-      const now = Date.now();
-      const cleanedLocal = {};
-      let expiredCount = 0;
-      
-      for (const [k, l] of Object.entries(locks)) {
-        if (l && l.until > now) {
-          cleanedLocal[k] = l;
-        } else if (l) {
-          expiredCount++;
-          console.log(`🧹 [loadStatus] Nettoyage lock expiré ${k}:`, {
-            uid: l.uid?.slice(0,8) + '...',
-            until: new Date(l.until).toLocaleTimeString(),
-            expiredBy: Math.round((now - l.until) / 1000) + 's'
-          });
-        }
-      }
-      
-      if (expiredCount > 0) {
-        console.log(`🧹 [loadStatus] ${expiredCount} locks expirés nettoyés`);
-      }
-      
-      
 
-    // ne garde en "local" que tes locks à toi (évite de traîner d’anciens locks d’autrui)
-    const mineOnly = {};
-    for (const [k, l] of Object.entries(locks || {})) {
-    if (l && l.uid === uid && l.until > now) {
-      mineOnly[k] = l;
+      const incoming = s.locks || {};
+      const now = Date.now();
+      const mineOnly = {};
+      for (const [k, l] of Object.entries(locks || {})) {
+        if (l && l.uid === uid && l.until > now) mineOnly[k] = l;
+      }
+
+      locks = mergeLocksPreferLocal(mineOnly, incoming);
+      paintAll();
     }
-    }
-      // Fusionner avec les locks nettoyés
-      console.log('🔄 [loadStatus] Fusion avec nettoyage préalable:', {
-        locksAvant: Object.keys(locks).length,
-        locksNettoyés: Object.keys(cleanedLocal).length,
-        locksEntrants: Object.keys(incoming).length
-      });
-      
-      locks = mergeLocksPreferLocal(cleanedLocal, incoming);
-      window.locks = { ...locks };
-      
-      console.log('🔄 [loadStatus] Après fusion:', {
-        locksFinaux: Object.keys(locks).length
-      });
-    }
-  } catch(e) {
-    console.error('❌ [loadStatus] ERREUR:', e);
-  }
-  
-  paintAll();
-  console.log('✅ [loadStatus] FIN');
+  } catch {}
 }
+
 
 
 (async function init(){ 
