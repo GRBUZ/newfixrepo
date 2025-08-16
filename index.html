@@ -11,37 +11,35 @@
 
 </head>
 <body>
-  <header class="hero">
-  <div class="container">
-    <div class="hero-top">
-      <!-- Accroche gauche -->
-      <div class="hero-left">
-        <p class="tagline">
-          <span>Claim your spot on the wall.</span><br>
-          <span>Be unmissable.</span>
-        </p>
-      </div>
+ <header class="masthead">
+  <!-- 1) Titre tout en haut -->
+  <h1 class="masthead-title">Influencers Wall</h1>
 
-      <!-- Titre centré -->
-      <h1 class="hero-title">Influencers Wall</h1>
+  <!-- 2) Bande violette -->
+  <div class="masthead-strip">
+    <div class="masthead-inner">
+      <!-- Accroche à gauche -->
+      <p class="masthead-tagline">
+        Claim your spot on the wall.<br>
+        Be unmissable.
+      </p>
 
-      <!-- Stats droite -->
-      <div class="hero-meta">
+      <!-- Stats à droite -->
+      <div class="masthead-meta">
         <div class="pixels-left" id="pixelsLeft">1,000,000 pixels</div>
         <div class="price-line" id="priceLine">1 pixel = $1.22</div>
         <div class="note">Every 1,000 pixels sold, price +$0.01</div>
       </div>
     </div>
+  </div>
 
-    <!-- Barre d’actions avec boutons centrés -->
-    <div class="hero-actions">
-      <div class="actions-center">
-        <button id="buyBtn" class="btn primary">Buy Pixels</button>
-        <a href="#contact" id="contactBtn" class="btn">Contact me</a>
-      </div>
-    </div>
+  <!-- 3) Boutons flottants qui chevauchent la bande -->
+  <div class="masthead-actions">
+    <button id="buyBtn" class="pill pill-primary">Buy Pixels</button>
+    <a id="contactBtn" href="#contact" class="pill pill-secondary">Contact me</a>
   </div>
 </header>
+
 
   <main>
     <div id="grid" class="grid" aria-label="pixel grid"></div>
