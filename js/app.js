@@ -68,64 +68,67 @@ function mergeLocksPreferLocal(local, incoming){
   const now = Date.now();
   const out = {};
   
-  console.log('🔄 [MERGE] Début merge équilibré:', {
+  console.log('🔄 [MERGE] Début merge:', {
     localCount: Object.keys(local || {}).length,
     incomingCount: Object.keys(incoming || {}).length,
-    now: new Date(now).toLocaleTimeString(),
-    browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME'
+    now: new Date(now).toLocaleTimeString()
   });
   
-  // 1️⃣ D'abord traiter TOUS les locks (locaux + entrants) et ne garder que les valides
-  const allLocks = {};
-  
-  // Ajouter les locks locaux valides
-  let localValidCount = 0;
-  for (const [k, l] of Object.entries(local || {})) {
+  // 1️⃣ D'abord, copier les locks entrants (état serveur = autoritaire pour les suppressions)
+  let incomingValid = 0;
+  for (const [k, l] of Object.entries(incoming || {})) {
     if (l && l.until > now) {
-      allLocks[k] = { ...l, source: 'local' };
-      localValidCount++;
-      console.log(`🏠 [MERGE] Local valide ${k}:`, {
-        uid: l.uid?.slice(0,8) + '...',
+      out[k] = l;
+      incomingValid++;
+      console.log(`📥 [MERGE] Incoming lock ${k}:`, {
+        uid: l.uid,
         until: new Date(l.until).toLocaleTimeString(),
         isOurs: l.uid === uid
       });
-    } else if (l && l.until <= now) {
-      console.log(`⏰ [MERGE] Local EXPIRÉ ignoré ${k}:`, {
-        uid: l.uid?.slice(0,8) + '...',
+    } else if (l) {
+      console.log(`⏰ [MERGE] Incoming lock ${k} EXPIRÉ:`, {
+        uid: l.uid,
         until: new Date(l.until).toLocaleTimeString(),
-        expiredBy: Math.round((now - l.until) / 1000) + 's'
-      });
-    }
-  }
-  // 2️⃣ Appliquer la priorité : nos locks ont priorité absolue s'ils sont plus longs
-  let ourPriorityCount = 0;
-  for (const [k, lock] of Object.entries(allLocks)) {
-    if (lock.uid === uid) {
-      // C'est notre lock, on le garde toujours
-      out[k] = { uid: lock.uid, until: lock.until };
-      ourPriorityCount++;
-      console.log(`👑 [MERGE] Notre lock prioritaire ${k}:`, {
-        until: new Date(lock.until).toLocaleTimeString(),
-        source: lock.source
-      });
-    } else {
-      // Lock d'un autre user - on le garde seulement si on n'a pas de conflit
-      const ourLock = Object.entries(allLocks).find(([_, l]) => l.uid === uid);
-      out[k] = { uid: lock.uid, until: lock.until };
-      console.log(`👤 [MERGE] Lock autre user ${k}:`, {
-        uid: lock.uid?.slice(0,8) + '...',
-        until: new Date(lock.until).toLocaleTimeString(),
-        source: lock.source
+        expired: l.until <= now
       });
     }
   }
   
-  console.log('✅ [MERGE] Résultat équilibré:', {
-    localValidCount,
-    incomingValidCount, 
-    ourPriorityCount,
+  // 2️⃣ Ensuite, garder SEULEMENT nos propres locks locaux (qui ont priorité)
+  let localKept = 0;
+  for (const [k, l] of Object.entries(local || {})) {
+    if (!l) continue;
+    
+    // Garder seulement nos locks valides
+    if (l.uid === uid && l.until > now) {
+      // Notre lock local a priorité s'il est plus récent/long
+      if (!out[k] || (out[k].until || 0) < l.until) {
+        console.log(`🏠 [MERGE] Keeping local lock ${k}:`, {
+          uid: l.uid,
+          until: new Date(l.until).toLocaleTimeString(),
+          overriding: !!out[k]
+        });
+        out[k] = l;
+        localKept++;
+      }
+    } else if (l.uid !== uid && l.until > now) {
+      console.log(`👤 [MERGE] Ignoring other's local lock ${k}:`, {
+        uid: l.uid,
+        until: new Date(l.until).toLocaleTimeString()
+      });
+    } else if (l.until <= now) {
+      console.log(`⏰ [MERGE] Local lock ${k} EXPIRÉ:`, {
+        uid: l.uid,
+        until: new Date(l.until).toLocaleTimeString()
+      });
+    }
+  }
+  
+  console.log('✅ [MERGE] Résultat merge:', {
+    incomingValid,
+    localKept,
     outputCount: Object.keys(out).length,
-    browser: navigator.userAgent.includes('Edg') ? 'EDGE' : 'CHROME'
+    outputKeys: Object.keys(out).slice(0, 5) // Premiers 5 pour debug
   });
   
   return out;
