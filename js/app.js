@@ -617,19 +617,3 @@ window.renderRegions = renderRegions;
 })();
 console.log('✅ Unified polling implemented - no more timing conflicts!');
 /*console.log('app.js (robust locks + heartbeat) loaded');*/
-// BONUS : Fonction de nettoyage manuel pour débugger
-function debugCleanExpiredLocks() {
-  const now = Date.now();
-  const before = Object.keys(locks).length;
-  
-  for (const [k, l] of Object.entries(locks)) {
-    if (!l || l.until <= now) {
-      delete locks[k];
-      console.log(`🧹 [DEBUG] Supprimé lock expiré ${k}`);
-    }
-  }
-  
-  const after = Object.keys(locks).length;
-  console.log(`🧹 [DEBUG] Nettoyage: ${before} -> ${after} locks`);
-  paintAll();
-}
