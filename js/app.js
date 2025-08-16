@@ -330,19 +330,72 @@ function closeModal(){
 }
 
 document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
-  if (selected.size){ try { await unlock(Array.from(selected)); } catch {} }
-  currentLock = []; stopHeartbeat();
-  closeModal(); clearSelection();
+  // ✅ CORRECTION CRITIQUE : Utiliser currentLock au lieu de selected
+  const blocksToUnlock = currentLock && currentLock.length > 0 ? currentLock : Array.from(selected);
+  
+  console.log('🔒 [CANCEL] Tentative unlock:', {
+    currentLock: currentLock,
+    selected: Array.from(selected),
+    blocksToUnlock: blocksToUnlock
+  });
+  
+  if (blocksToUnlock.length > 0) { 
+    try { 
+      console.log('🔓 [CANCEL] Unlock en cours...', blocksToUnlock);
+      await unlock(blocksToUnlock); 
+      console.log('✅ [CANCEL] Unlock réussi');
+    } catch (e) {
+      console.error('❌ [CANCEL] Erreur unlock:', e);
+    }
+  }
+  
+  currentLock = []; 
+  stopHeartbeat();
+  closeModal(); 
+  clearSelection();
+  
+  // Force refresh pour s'assurer que les locks sont supprimés
+  holdIncomingLocksUntil = 0; // Supprimer protection
+  setTimeout(async () => {
+    await loadStatus();
+    paintAll();
+  }, 200);
 }));
+
 window.addEventListener('keydown', async (e)=>{
   if(e.key==='Escape'){
-    if (!modal.classList.contains('hidden') && selected.size){ try { await unlock(Array.from(selected)); } catch {} }
-    currentLock = []; stopHeartbeat();
-    currentLock = [];
-    if (heartbeat){ clearInterval(heartbeat); heartbeat = null; }
-    closeModal();
-    
-     clearSelection();
+    if (!modal.classList.contains('hidden')) {
+      // ✅ CORRECTION CRITIQUE : Utiliser currentLock au lieu de selected
+      const blocksToUnlock = currentLock && currentLock.length > 0 ? currentLock : Array.from(selected);
+      
+      console.log('🔒 [ESC] Tentative unlock:', {
+        currentLock: currentLock,
+        selected: Array.from(selected),
+        blocksToUnlock: blocksToUnlock
+      });
+      
+      if (blocksToUnlock.length > 0) { 
+        try { 
+          console.log('🔓 [ESC] Unlock en cours...', blocksToUnlock);
+          await unlock(blocksToUnlock); 
+          console.log('✅ [ESC] Unlock réussi');
+        } catch (e) {
+          console.error('❌ [ESC] Erreur unlock:', e);
+        }
+      }
+      
+      currentLock = [];
+      stopHeartbeat();
+      closeModal();
+      clearSelection();
+      
+      // Force refresh pour s'assurer que les locks sont supprimés
+      holdIncomingLocksUntil = 0; // Supprimer protection
+      setTimeout(async () => {
+        await loadStatus();
+        paintAll();
+      }, 200);
+    }
   }
 });
 
