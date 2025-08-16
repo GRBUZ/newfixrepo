@@ -184,8 +184,11 @@ function refreshTopbar(){
   const blocksSold=Object.keys(sold).length, pixelsSold=blocksSold*100;
   const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
   priceLine.textContent = `1 pixel = ${formatMoney(currentPrice)}`;
-  const left = TOTAL_PIXELS - pixelsSold;
-  pixelsLeftEl.textContent = `${formatInt(left)} pixels left`;
+  //const left = TOTAL_PIXELS - pixelsSold;
+  //pixelsLeftEl.textContent = `${formatInt(left)} pixels left`;
+  // Afficher toujours le total fixe "1,000,000 pixels"
+  pixelsLeftEl.textContent = `${TOTAL_PIXELS.toLocaleString('en-US')} pixels`;
+
   const selectedPixels = selected.size * 100;
   if (selectedPixels > 0) {
     const total = selectedPixels * currentPrice;
