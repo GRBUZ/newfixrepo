@@ -12,25 +12,36 @@
 </head>
 <body>
   <header class="hero">
-    <div class="hero-top container">
-      <div class="brand">
-        <h1>Influencers:</h1> 
-        <h1>Claim your spot on the wall. Be unmissable. </h1>
+  <div class="container">
+    <div class="hero-top">
+      <!-- Accroche gauche -->
+      <div class="hero-left">
+        <p class="tagline">
+          <span>Claim your spot on the wall.</span><br>
+          <span>Be unmissable.</span>
+        </p>
       </div>
-      <div class="meta">
-        <div id="priceLine" class="price">1 Pixel = $1.00</div>
+
+      <!-- Titre centré -->
+      <h1 class="hero-title">Influencers Wall</h1>
+
+      <!-- Stats droite -->
+      <div class="hero-meta">
+        <div class="pixels-left" id="pixelsLeft">1,000,000 pixels</div>
+        <div class="price-line" id="priceLine">1 pixel = $1.22</div>
         <div class="note">Every 1,000 pixels sold, price +$0.01</div>
-        <div id="pixelsLeft" class="left">1 000 000 pixels left</div>
       </div>
     </div>
 
+    <!-- Barre d’actions avec boutons centrés -->
     <div class="hero-actions">
-      <div class="container actions-center">
-        <button id="buyBtn" class="btn pill primary" disabled>Buy Pixels</button>
-        <a id="contactBtn" class="btn pill outline" href="mailto:hello@example.com">Contact Me</a>
+      <div class="actions-center">
+        <button id="buyBtn" class="btn primary">Buy Pixels</button>
+        <a href="#contact" id="contactBtn" class="btn">Contact me</a>
       </div>
     </div>
-  </header>
+  </div>
+</header>
 
   <main>
     <div id="grid" class="grid" aria-label="pixel grid"></div>
