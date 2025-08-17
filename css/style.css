@@ -425,7 +425,7 @@ main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
   font-variant-numeric: tabular-nums;        /* chiffres alignés */
   font-feature-settings: "tnum";
 }
-/* Bande violette en forme de pilule (bouts arrondis) */
+/* Bande violette en forme de pilule (bouts arrondis)
 .masthead-strip{
   border-radius: 9999px;          
   margin: 0 14px;                 
@@ -444,5 +444,5 @@ main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
 
 @media (max-width:760px){
   .masthead-strip{ margin: 0 10px; }
-}
+}*/
 
