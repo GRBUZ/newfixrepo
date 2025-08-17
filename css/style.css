@@ -227,6 +227,23 @@ main{display:flex;justify-content:center;padding:16px}
 #grid{ position:relative; z-index:2; }
 
 
+/* ====== Titre en haut ====== */
+
+.masthead-title{
+  /*font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;*/
+  /*font-family:"Sora", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;*/
+  font-family:"Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  font-weight: 700;
+  font-size: clamp(18px, 2.2vw, 22px); /* compact comme tu voulais */
+  line-height: 1.05;
+  letter-spacing: 0.2px;
+  margin: 4px 0 2px;
+  text-align: center;
+  color: #b93ad4; /* violet comme sur ta capture */
+}
+
+
 /* ====== Bande violette ====== */
 .masthead-strip{
   background: linear-gradient(180deg, #c13abd 0%, #9b34d3 40%, #8a2cd9 100%);
@@ -236,8 +253,23 @@ main{display:flex;justify-content:center;padding:16px}
   position: relative;
   z-index: 1;
 }
-
-
+.masthead-inner{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 18px;           /* hauteur similaire à ta capture */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 16px;
+}
+.masthead-tagline{
+  font-family:"Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  margin: 0;
+  font-weight: 800;
+  line-height: 1.25;
+  font-size: clamp(18px, 2.2vw, 24px);
+  text-shadow: 0 1px 0 rgba(0,0,0,.15);
+}
 .masthead-meta{
   text-align: right;
   font-weight: 800;
@@ -301,7 +333,17 @@ main{display:flex;justify-content:center;padding:16px}
   font-weight: 800;    /* garde l’impact, mais tu peux mettre 700 */
   letter-spacing: .1px;
 }
-
+/*
+.masthead-title{
+  font-size: clamp(18px, 2.4vw, 18px);
+  margin: 8px 0 4px;
+}*/
+.masthead-inner{
+  padding: 12px 16px; /* un peu moins haut */
+}
+.masthead-tagline{
+  font-size: clamp(16px, 2vw, 18px);
+}
 .masthead-meta .pixels-left{
   font-size: clamp(16px, 2vw, 16px);
 }
@@ -383,7 +425,7 @@ main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
   font-variant-numeric: tabular-nums;        /* chiffres alignés */
   font-feature-settings: "tnum";
 }
-/* Bande violette en forme de pilule (bouts arrondis)
+/* Bande violette en forme de pilule (bouts arrondis) */
 .masthead-strip{
   border-radius: 9999px;          
   margin: 0 14px;                 
@@ -397,100 +439,10 @@ main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
 }
 
 .masthead-actions{
-  top: -20px;                     
+  top: -20px;                    
 }
 
 @media (max-width:760px){
   .masthead-strip{ margin: 0 10px; }
-}*/
-/* ===== CLEAN MASTHEAD (Jakarta, left = right) ===== */
-.masthead-title,
-.masthead-tagline,
-.masthead-meta,
-.masthead-meta .pixels-left,
-.masthead-meta .price-line,
-.masthead-meta .note {
-  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  color: #fff;
-  text-shadow: 0 1px 0 rgba(0,0,0,.15);
 }
-
-/* Titre tout en haut */
-.masthead-title{
-  font-weight: 700;
-  font-size: clamp(18px, 2.1vw, 22px);
-  line-height: 1.04;
-  letter-spacing: .1px;
-  margin: 4px 0 2px;
-  text-align: center;
-  color: #b93ad4;
-}
-
-/* Bande violette = pilule */
-.masthead-strip{
-  background: linear-gradient(180deg, #c13abd 0%, #9b34d3 40%, #8a2cd9 100%);
-  border-radius: 9999px;
-  margin: 0 14px;
-  overflow: hidden;
-  box-shadow: 0 6px 18px rgba(0,0,0,.08);
-  position: relative; z-index: 1;
-  border: 0;
-}
-.masthead-inner{
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 14px 20px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  gap: 16px;
-}
-
-/* Gauche */
-.masthead-tagline{
-  margin: 0;
-  font-weight: 700;                 /* = même graisse que la droite */
-  font-size: clamp(16px, 2vw, 20px);
-  line-height: 1.22;
-  letter-spacing: .1px;
-}
-
-/* Droite (aligné et harmonisé) */
-.masthead-meta{ text-align: right; }
-.masthead-meta .pixels-left{
-  font-weight: 700;
-  font-size: clamp(16px, 2vw, 20px);
-  line-height: 1.18;
-}
-.masthead-meta .price-line{
-  font-weight: 700;
-  font-size: clamp(13px, 1.7vw, 16px);
-  line-height: 1.16;
-}
-.masthead-meta .note{
-  font-weight: 600;
-  font-size: 12px;
-  opacity: .95;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
-/* Boutons au centre, chevauchement */
-.masthead-actions{
-  position: relative;
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  top: -18px;
-  z-index: 2;
-}
-
-/* Mobile */
-@media (max-width:760px){
-  .masthead-inner{ grid-template-columns: 1fr; text-align: center; }
-  .masthead-meta{ text-align: center; }
-  .masthead-strip{ margin: 0 10px; }
-  .masthead-actions{ top: -16px; }
-}
-
 
