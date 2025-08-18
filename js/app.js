@@ -52,7 +52,7 @@ let sold = {};
 let locks = {};
 let selected = new Set();
 let holdIncomingLocksUntil = 0;   // fenêtre pendant laquelle on NE TOUCHE PAS aux locks venant du serveur
-
+let lastStatus = null;
 
 // Heartbeat while modal open
 let currentLock = [];
@@ -426,14 +426,16 @@ function rectFromIndices(arr){
 // Remplacez le début de loadStatus() par ceci pour voir la réponse brute :
 
 // CORRECTION CRITIQUE : Nettoyer les locks expirés dans loadStatus
-async function loadStatus(){
-  try{
-    const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
+let lastStatusCache = { sold: null, visible: null };
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/.netlify/functions/status', { cache: 'no-store' });
     const s = await r.json();
     if (!s || !s.ok) return;
 
     // 1) Màj des ventes
-    sold = s.sold || {};
+    const newSold = s.sold || {};
 
     const incoming = s.locks || {};
     const now = Date.now();
@@ -474,11 +476,22 @@ async function loadStatus(){
       }
     }
 
-    // 5) remplace la carte active et repeins
-    locks = visible;
-    paintAll();
-  } catch {}
+    // 5) Vérifie les changements
+    const soldChanged = JSON.stringify(newSold) !== JSON.stringify(lastStatusCache.sold);
+    const visibleChanged = JSON.stringify(visible) !== JSON.stringify(lastStatusCache.visible);
+
+    if (soldChanged || visibleChanged) {
+      sold = newSold;
+      locks = visible;
+      paintAll();
+      lastStatusCache = { sold: newSold, visible };
+    }
+    
+  } catch (e) {
+    console.warn('loadStatus() failed', e);
+  }
 }
+
 
 (async function init(){ 
   await loadStatus(); paintAll(); 
