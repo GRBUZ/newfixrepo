@@ -1,1335 +1,616 @@
-// app.js — Version optimisée avec améliorations de performance
-// Configuration et constantes
-const CONFIG = {
-  GRID_SIZE: 100,
-  TOTAL_PIXELS: 1_000_000,
-  OTHERS_GRACE_MS: 5000,
-  HEARTBEAT_INTERVAL: 4000,
-  LOCK_TTL: 300000,
-  HOLD_PROTECTION_TIME: 8000,
-  MAIN_POLLING_INTERVAL: 2500,
-  REGIONS_POLLING_INTERVAL: 15000,
-  INVALID_RECT_TTL: 900,
-  BASE_PRICE: 1,
-  PRICE_INCREMENT: 0.01,
-  PRICE_TIER_SIZE: 1000
-};
+// app.js — robust locks: local-wins merge + heartbeat during modal
+// Anti-flicker pour les locks d’autrui
+const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
+const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
+const othersHold = Object.create(null);    // idx -> expiresAt (timestamp)
 
-// Cache et état global optimisé
-const state = {
-  uid: null,
-  sold: Object.create(null),
-  locks: Object.create(null),
-  selected: new Set(),
-  holdIncomingLocksUntil: 0,
-  currentLock: [],
-  cellSize: { w: 10, h: 10 },
-  
-  // État du drag optimisé
-  drag: {
-    active: false,
-    startIdx: -1,
-    lastIdx: -1,
-    moved: false,
-    suppressClick: false,
-    blocked: false
-  },
-  
-  // Cache pour les éléments DOM
-  elements: {}
-};
 
-// Anti-flicker pour les locks d'autrui
-const othersCache = {
-  lastSeen: Object.create(null),
-  hold: Object.create(null)
-};
+const N = 100;
+const TOTAL_PIXELS = 1_000_000;
 
-// Cache des éléments DOM pour éviter les lookups répétés
-function initDOMCache() {
-  const elements = [
-    'grid', 'buyBtn', 'priceLine', 'pixelsLeft', 'modal', 'form',
-    'link', 'name', 'email', 'confirm', 'modalStats'
-  ];
-  
-  elements.forEach(id => {
-    state.elements[id] = document.getElementById(id);
-  });
-}
+// DOM
+const grid = document.getElementById('grid');
+const buyBtn = document.getElementById('buyBtn');
+const priceLine = document.getElementById('priceLine');
+const pixelsLeftEl = document.getElementById('pixelsLeft');
 
-// Utilitaires optimisés
-const utils = {
-  formatInt: (n) => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
-  
-  formatMoney: (n) => {
-    const [i, d] = Number(n).toFixed(2).split('.');
-    return '$' + i.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '.' + d;
-  },
-  
-  // UID génération plus robuste
-  generateUID: () => {
-    const key = 'iw_uid';
-    let uid = localStorage.getItem(key);
-    
-    if (!uid) {
-      if (window.crypto?.randomUUID) {
-        uid = crypto.randomUUID();
-      } else if (window.crypto?.getRandomValues) {
-        const arr = new Uint8Array(16);
-        crypto.getRandomValues(arr);
-        uid = Array.from(arr, byte => byte.toString(16).padStart(2, '0')).join('');
-      } else {
-        uid = Date.now().toString(36) + Math.random().toString(36).slice(2);
-      }
-      localStorage.setItem(key, uid);
-    }
-    
-    return uid;
-  },
-  
-  // Calculs de coordonnées optimisés avec cache
-  idxToRowCol: (idx) => [Math.floor(idx / CONFIG.GRID_SIZE), idx % CONFIG.GRID_SIZE],
-  rowColToIdx: (r, c) => r * CONFIG.GRID_SIZE + c,
-  
-  // Prix dynamique optimisé
-  getCurrentPrice: () => {
-    const pixelsSold = Object.keys(state.sold).length * 100;
-    return CONFIG.BASE_PRICE + Math.floor(pixelsSold / CONFIG.PRICE_TIER_SIZE) * CONFIG.PRICE_INCREMENT;
-  },
-  
-  // Throttle pour les events fréquents
-  throttle: (func, delay) => {
-    let timeoutId;
-    let lastExecTime = 0;
-    
-    return function (...args) {
-      const currentTime = Date.now();
-      
-      if (currentTime - lastExecTime > delay) {
-        func.apply(this, args);
-        lastExecTime = currentTime;
-      } else {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          func.apply(this, args);
-          lastExecTime = Date.now();
-        }, delay - (currentTime - lastExecTime));
-      }
-    };
-  },
-  
-  // Debounce pour les recalculs
-  debounce: (func, delay) => {
-    let timeoutId;
-    return function (...args) {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => func.apply(this, args), delay);
-    };
-  }
-};
+const modal = document.getElementById('modal');
+const form = document.getElementById('form');
+const linkInput = document.getElementById('link');
+const nameInput = document.getElementById('name');
+const emailInput = document.getElementById('email');
+const confirmBtn = document.getElementById('confirm');
+const modalStats = document.getElementById('modalStats');
 
-// Initialisation de l'UID
-state.uid = utils.generateUID();
-window.uid = state.uid;
+function formatInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
 
-// Gestion optimisée des cellules
-const cellManager = {
-  // Cache des états de cellules pour éviter les recalculs
-  cellStateCache: new Map(),
-  dirtyeCells: new Set(),
-  
-  recalcCellSize: utils.debounce(() => {
-    const firstCell = state.elements.grid?.children[0];
-    if (!firstCell) return;
-    
-    const rect = firstCell.getBoundingClientRect();
-    state.cellSize = {
-      w: Math.max(1, Math.round(rect.width)),
-      h: Math.max(1, Math.round(rect.height))
-    };
-  }, 100),
-  
-  isBlockedCell(idx) {
-    // Cache du résultat pour éviter les recalculs
-    const cacheKey = `${idx}-${Date.now() >> 10}`; // Cache par seconde
-    if (this.cellStateCache.has(cacheKey)) {
-      return this.cellStateCache.get(cacheKey);
-    }
-    
-    const isBlocked = !!(state.sold[idx] || 
-      (state.locks[idx]?.until > Date.now() && state.locks[idx]?.uid !== state.uid));
-    
-    this.cellStateCache.set(cacheKey, isBlocked);
-    
-    // Nettoyage périodique du cache
-    if (this.cellStateCache.size > 1000) {
-      const cutoff = Date.now() - 5000;
-      for (const [key] of this.cellStateCache) {
-        if (parseInt(key.split('-')[1]) * 1000 < cutoff) {
-          this.cellStateCache.delete(key);
-        }
-      }
-    }
-    
-    return isBlocked;
-  },
-  
-  // Painting optimisé avec batch updates
-  paintCell(idx) {
-    const cell = state.elements.grid.children[idx];
-    if (!cell) return;
-    
-    const sold = state.sold[idx];
-    const lock = state.locks[idx];
-    const reserved = lock?.until > Date.now() && !sold;
-    const reservedByOther = reserved && lock.uid !== state.uid;
-    
-    // Batch DOM updates
-    const updates = {
-      classes: {
-        sold: !!sold,
-        pending: !!reservedByOther,
-        sel: state.selected.has(idx)
-      },
-      styles: {},
-      title: '',
-      link: null
-    };
-    
-    // Style de background pour les images
-    if (sold?.imageUrl && sold.rect && Number.isInteger(sold.rect.x)) {
-      const [r, c] = utils.idxToRowCol(idx);
-      const { w: CW, h: CH } = state.cellSize;
-      const offX = (c - sold.rect.x) * CW;
-      const offY = (r - sold.rect.y) * CH;
-      
-      updates.styles = {
-        backgroundImage: `url(${sold.imageUrl})`,
-        backgroundSize: `${sold.rect.w * CW}px ${sold.rect.h * CH}px`,
-        backgroundPosition: `-${offX}px -${offY}px`
-      };
-    }
-    
-    // Title et lien
-    if (sold) {
-      updates.title = (sold.name ? sold.name + ' · ' : '') + (sold.linkUrl || '');
-      if (sold.linkUrl) {
-        updates.link = sold.linkUrl;
-      }
-    }
-    
-    // Application des mises à jour en batch
-    this.applyUpdates(cell, updates);
-  },
-  
-  applyUpdates(cell, updates) {
-    // Classes
-    Object.entries(updates.classes).forEach(([className, shouldHave]) => {
-      cell.classList.toggle(className, shouldHave);
-    });
-    
-    // Styles
-    Object.entries(updates.styles).forEach(([prop, value]) => {
-      cell.style[prop] = value;
-    });
-    
-    // Title
-    cell.title = updates.title;
-    
-    // Lien
-    if (updates.link) {
-      if (!cell.firstChild) {
-        const link = document.createElement('a');
-        link.className = 'region-link';
-        link.target = '_blank';
-        cell.appendChild(link);
-      }
-      cell.firstChild.href = updates.link;
-    } else if (cell.firstChild) {
-      cell.firstChild.remove();
-    }
-  },
-  
-  // Paint optimisé avec RequestAnimationFrame
-  paintAll() {
-    requestAnimationFrame(() => {
-      const gridSize = CONFIG.GRID_SIZE * CONFIG.GRID_SIZE;
-      for (let i = 0; i < gridSize; i++) {
-        this.paintCell(i);
-      }
-      uiManager.refreshTopbar();
-    });
-  },
-  
-  // Batch paint pour les cellules modifiées uniquement
-  paintDirty() {
-    if (this.dirtyeCells.size === 0) return;
-    
-    requestAnimationFrame(() => {
-      this.dirtyeCells.forEach(idx => this.paintCell(idx));
-      this.dirtyeCells.clear();
-      uiManager.refreshTopbar();
-    });
-  },
-  
-  markDirty(idx) {
-    this.dirtyeCells.add(idx);
-  }
-};
-
-// Gestionnaire d'UI optimisé
-const uiManager = {
-  lastTopbarUpdate: 0,
-  
-  refreshTopbar: utils.throttle(() => {
-    const blocksSold = Object.keys(state.sold).length;
-    const pixelsSold = blocksSold * 100;
-    const currentPrice = utils.getCurrentPrice();
-    
-    state.elements.priceLine.textContent = `1 pixel = ${utils.formatMoney(currentPrice)}`;
-    state.elements.pixelsLeft.textContent = `${CONFIG.TOTAL_PIXELS.toLocaleString('en-US')} pixels`;
-    
-    const selectedPixels = state.selected.size * 100;
-    if (selectedPixels > 0) {
-      const total = selectedPixels * currentPrice;
-      state.elements.buyBtn.textContent = `Buy Pixels — ${utils.formatInt(selectedPixels)} px (${utils.formatMoney(total)})`;
-      state.elements.buyBtn.disabled = false;
-    } else {
-      state.elements.buyBtn.textContent = 'Buy Pixels';
-      state.elements.buyBtn.disabled = true;
-    }
-  }, 100),
-  
-  clearSelection() {
-    state.selected.forEach(idx => {
-      state.elements.grid.children[idx]?.classList.remove('sel');
-    });
-    state.selected.clear();
-    this.refreshTopbar();
-  },
-  
-  applySelection(newSet) {
-    // Optimisation: seulement modifier les cellules qui changent
-    const toRemove = new Set([...state.selected].filter(x => !newSet.has(x)));
-    const toAdd = new Set([...newSet].filter(x => !state.selected.has(x)));
-    
-    toRemove.forEach(idx => {
-      state.elements.grid.children[idx]?.classList.remove('sel');
-    });
-    
-    toAdd.forEach(idx => {
-      state.elements.grid.children[idx]?.classList.add('sel');
-    });
-    
-    state.selected = newSet;
-    this.refreshTopbar();
-  }
-};
-
-// Gestionnaire de sélection optimisé
-const selectionManager = {
-  selectRect(aIdx, bIdx) {
-    const [ar, ac] = utils.idxToRowCol(aIdx);
-    const [br, bc] = utils.idxToRowCol(bIdx);
-    const r0 = Math.min(ar, br), r1 = Math.max(ar, br);
-    const c0 = Math.min(ac, bc), c1 = Math.max(ac, bc);
-    
-    // Vérification optimisée des cellules bloquées
-    state.drag.blocked = false;
-    
-    // Early exit si la sélection est trop grande (performance)
-    const rectSize = (r1 - r0 + 1) * (c1 - c0 + 1);
-    if (rectSize > 10000) { // Limite arbitraire
-      state.drag.blocked = true;
-      uiManager.clearSelection();
-      return;
-    }
-    
-    // Vérification des cellules bloquées avec short-circuit
-    outerLoop: for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) {
-        const idx = utils.rowColToIdx(r, c);
-        if (cellManager.isBlockedCell(idx)) {
-          state.drag.blocked = true;
-          break outerLoop;
-        }
-      }
-    }
-    
-    if (state.drag.blocked) {
-      uiManager.clearSelection();
-      invalidRectManager.show(r0, c0, r1, c1, CONFIG.INVALID_RECT_TTL);
-      return;
-    }
-    
-    // Construction optimisée de la nouvelle sélection
-    const newSelection = new Set();
-    for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) {
-        newSelection.add(utils.rowColToIdx(r, c));
-      }
-    }
-    
-    uiManager.applySelection(newSelection);
-    invalidRectManager.hide();
-  },
-  
-  toggleCell(idx) {
-    if (cellManager.isBlockedCell(idx)) return;
-    
-    if (state.selected.has(idx)) {
-      state.selected.delete(idx);
-      state.elements.grid.children[idx]?.classList.remove('sel');
-    } else {
-      state.selected.add(idx);
-      state.elements.grid.children[idx]?.classList.add('sel');
-    }
-    
-    uiManager.refreshTopbar();
-  },
-  
-  idxFromClientXY: utils.throttle((x, y) => {
-    const rect = state.elements.grid.getBoundingClientRect();
-    const { w: CW, h: CH } = state.cellSize;
-    const gx = Math.floor((x - rect.left) / CW);
-    const gy = Math.floor((y - rect.top) / CH);
-    
-    if (gx < 0 || gy < 0 || gx >= CONFIG.GRID_SIZE || gy >= CONFIG.GRID_SIZE) {
-      return -1;
-    }
-    
-    return gy * CONFIG.GRID_SIZE + gx;
-  }, 16) // ~60fps
-};
-
-// Gestionnaire de rectangle invalide optimisé
-const invalidRectManager = {
-  element: null,
-  hideTimeout: null,
-  
-  init() {
-    this.element = document.createElement('div');
-    this.element.id = 'invalidRect';
-    Object.assign(this.element.style, {
-      position: 'absolute',
-      border: '2px solid #ef4444',
-      background: 'rgba(239,68,68,0.08)',
-      pointerEvents: 'none',
-      display: 'none',
-      zIndex: '999'
-    });
-    
-    const icon = document.createElement('div');
-    Object.assign(icon.style, {
-      position: 'absolute',
-      left: '50%',
-      top: '50%',
-      transform: 'translate(-50%,-50%)',
-      pointerEvents: 'none',
-      zIndex: '1000'
-    });
-    
-    icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle>
-      <circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" stroke-width="2"></circle>
-      <line x1="7" y1="17" x2="17" y2="7" stroke="#ef4444" stroke-width="2" stroke-linecap="round"></line>
-    </svg>`;
-    
-    this.element.appendChild(icon);
-    state.elements.grid.appendChild(this.element);
-  },
-  
-  show(r0, c0, r1, c1, ttl = CONFIG.INVALID_RECT_TTL) {
-    if (this.hideTimeout) {
-      clearTimeout(this.hideTimeout);
-      this.hideTimeout = null;
-    }
-    
-    const { w: CW, h: CH } = state.cellSize;
-    const left = c0 * CW, top = r0 * CH;
-    const width = (c1 - c0 + 1) * CW, height = (r1 - r0 + 1) * CH;
-    
-    Object.assign(this.element.style, {
-      left: left + 'px',
-      top: top + 'px',
-      width: width + 'px',
-      height: height + 'px',
-      display: 'block'
-    });
-    
-    const size = Math.max(16, Math.min(64, Math.floor(Math.min(width, height) * 0.7)));
-    const svg = this.element.querySelector('svg');
-    svg.style.width = size + 'px';
-    svg.style.height = size + 'px';
-    
-    if (ttl > 0) {
-      this.hideTimeout = setTimeout(() => this.hide(), ttl);
-    }
-  },
-  
-  hide() {
-    this.element.style.display = 'none';
-    if (this.hideTimeout) {
-      clearTimeout(this.hideTimeout);
-      this.hideTimeout = null;
-    }
-  }
-};
-
-// Gestionnaire de locks optimisé
-const lockManager = {
-  // Merge optimisé avec moins d'allocations
-  mergeLocksPreferLocal(local, incoming) {
-    const now = Date.now();
-    const result = Object.create(null);
-    
-    // Garde mes locks valides
-    for (const [key, lock] of Object.entries(local || {})) {
-      if (lock?.uid === state.uid && lock.until > now) {
-        result[key] = { uid: lock.uid, until: lock.until };
-      }
-    }
-    
-    // Ajoute les locks entrants
-    for (const [key, lock] of Object.entries(incoming || {})) {
-      if (lock?.until > now) {
-        result[key] = { uid: lock.uid, until: lock.until };
-        othersCache.lastSeen[key] = now;
-      }
-    }
-    
-    // Grâce pour les locks d'autrui disparus
-    for (const [key, lock] of Object.entries(local || {})) {
-      if (!result[key] && lock?.uid !== state.uid && lock.until > now) {
-        const lastSeen = othersCache.lastSeen[key] || 0;
-        if (now - lastSeen < CONFIG.OTHERS_GRACE_MS) {
-          result[key] = { uid: lock.uid, until: lock.until };
+  // 1. UID génération plus robuste pour Edge
+const uid = (()=>{ 
+    const k='iw_uid'; 
+    let v=localStorage.getItem(k); 
+    if(!v){ 
+        // Meilleure compatibilité Edge
+        if (window.crypto && window.crypto.randomUUID) {
+            v = crypto.randomUUID();
+        } else if (window.crypto && window.crypto.getRandomValues) {
+            // Fallback pour Edge anciennes versions
+            const arr = new Uint8Array(16);
+            crypto.getRandomValues(arr);
+            v = Array.from(arr, byte => byte.toString(16).padStart(2, '0')).join('');
         } else {
-          delete othersCache.lastSeen[key];
+            // Fallback ultime
+            v = Date.now().toString(36) + Math.random().toString(36).slice(2);
         }
-      }
-    }
-    
-    return result;
-  },
-  
-  // Nettoyage périodique des locks expirés
-  cleanExpiredLocks() {
-    const now = Date.now();
-    const keysToDelete = [];
-    
-    for (const [key, lock] of Object.entries(state.locks)) {
-      if (!lock || lock.until <= now) {
-        keysToDelete.push(key);
-      }
-    }
-    
-    keysToDelete.forEach(key => {
-      delete state.locks[key];
-      cellManager.markDirty(parseInt(key, 10));
-    });
-    
-    if (keysToDelete.length > 0) {
-      cellManager.paintDirty();
+        localStorage.setItem(k,v);
+    } 
+    window.uid=v; 
+    return v; 
+})();
+
+let sold = {};
+let locks = {};
+let selected = new Set();
+let holdIncomingLocksUntil = 0;   // fenêtre pendant laquelle on NE TOUCHE PAS aux locks venant du serveur
+
+let CELL = { w:10, h:10 };
+function recalcCell(){
+  const c = grid.children[0];
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  CELL = { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
+}
+window.addEventListener('resize', recalcCell);
+recalcCell();
+
+// Heartbeat while modal open
+let currentLock = [];
+let heartbeat = null;
+function startHeartbeat(){
+  stopHeartbeat();
+  heartbeat = setInterval(async ()=>{
+    if (!currentLock.length) return;
+    try { await reserve(currentLock); } catch {}
+  }, 4000); // 25s
+}
+function stopHeartbeat(){
+  if (heartbeat){ clearInterval(heartbeat); heartbeat=null; }
+}
+
+// Merge helper: keep our local locks (same uid) if longer
+function mergeLocksPreferLocal(local, incoming){
+  const now = Date.now();
+  const out = Object.create(null);
+
+  // 1) Mes locks à moi (uid === uid) : on garde s'ils sont encore valides
+  for (const [k, l] of Object.entries(local || {})) {
+    if (l && l.uid === uid && l.until > now) {
+      out[k] = { uid: l.uid, until: l.until };
     }
   }
-};
 
-// Gestionnaire de heartbeat optimisé
-const heartbeatManager = {
-  interval: null,
-  
-  start() {
-    this.stop();
-    if (state.currentLock.length === 0) return;
-    
-    this.interval = setInterval(async () => {
-      if (state.currentLock.length === 0) {
-        this.stop();
-        return;
-      }
-      
-      try {
-        await apiManager.reserve(state.currentLock);
-      } catch (error) {
-        console.warn('Heartbeat failed:', error);
-      }
-    }, CONFIG.HEARTBEAT_INTERVAL);
-  },
-  
-  stop() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+  // 2) Locks entrants (serveur) : vérité pour les autres + on note "vu à now"
+  for (const [k, l] of Object.entries(incoming || {})) {
+    if (l && l.until > now) {
+      out[k] = { uid: l.uid, until: l.until };
+      othersLastSeen[k] = now;
     }
   }
-};
 
-// Gestionnaire d'API avec retry et cache
-const apiManager = {
-  // Cache des requêtes pour éviter les doublons
-  requestCache: new Map(),
-  
-  // Retry automatique avec backoff exponentiel
-  async requestWithRetry(url, options, maxRetries = 3) {
-    const cacheKey = `${url}-${JSON.stringify(options)}`;
-    
-    // Cache très court pour éviter les doublons
-    if (this.requestCache.has(cacheKey)) {
-      const cached = this.requestCache.get(cacheKey);
-      if (Date.now() - cached.timestamp < 1000) {
-        return cached.response;
+  // 3) Si un lock d’autrui a "disparu" à ce poll, on le garde en grâce qq secondes
+  for (const [k, l] of Object.entries(local || {})) {
+    if (!out[k] && l && l.uid !== uid && l.until > now) {
+      const last = othersLastSeen[k] || 0;
+      if (now - last < OTHERS_GRACE_MS) {
+        out[k] = { uid: l.uid, until: l.until }; // on le maintient temporairement
+      } else {
+        delete othersLastSeen[k]; // grâce expirée : on laisse tomber
       }
-    }
-    
-    let lastError;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, {
-          ...options,
-          cache: 'no-store',
-          headers: {
-            'content-type': 'application/json',
-            ...options.headers
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok || !data.ok) {
-          throw new Error(data.error || `HTTP ${response.status}`);
-        }
-        
-        // Cache la réponse
-        this.requestCache.set(cacheKey, {
-          response: data,
-          timestamp: Date.now()
-        });
-        
-        // Nettoyage du cache
-        if (this.requestCache.size > 100) {
-          const cutoff = Date.now() - 5000;
-          for (const [key, value] of this.requestCache) {
-            if (value.timestamp < cutoff) {
-              this.requestCache.delete(key);
-            }
-          }
-        }
-        
-        return data;
-      } catch (error) {
-        lastError = error;
-        if (attempt < maxRetries - 1) {
-          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-    
-    throw lastError;
-  },
-  
-  async reserve(indices) {
-    const response = await this.requestWithRetry('/.netlify/functions/reserve', {
-      method: 'POST',
-      body: JSON.stringify({
-        uid: state.uid,
-        blocks: indices,
-        ttl: CONFIG.LOCK_TTL
-      })
-    });
-    
-    // Mise à jour locale optimisée
-    const now = Date.now();
-    for (const idx of (response.locked || [])) {
-      state.locks[idx] = { uid: state.uid, until: now + CONFIG.LOCK_TTL };
-      cellManager.markDirty(idx);
-    }
-    
-    // Merge des locks avec protection
-    state.locks = lockManager.mergeLocksPreferLocal(state.locks, response.locks || {});
-    cellManager.paintDirty();
-    
-    state.holdIncomingLocksUntil = Date.now() + CONFIG.HOLD_PROTECTION_TIME;
-    state.currentLock = Array.isArray(response.locked) ? response.locked.slice() : [];
-    
-    return response;
-  },
-  
-  async unlock(indices) {
-    const response = await this.requestWithRetry('/.netlify/functions/unlock', {
-      method: 'POST',
-      body: JSON.stringify({
-        uid: state.uid,
-        blocks: indices
-      })
-    });
-    
-    state.locks = response.locks || {};
-    state.holdIncomingLocksUntil = 0;
-    
-    // Marquer toutes les cellules affectées comme dirty
-    indices.forEach(idx => cellManager.markDirty(idx));
-    cellManager.paintDirty();
-    
-    return response;
-  },
-  
-  async loadStatus() {
-    try {
-      const response = await this.requestWithRetry('/.netlify/functions/status');
-      
-      if (!response?.ok) return;
-      
-      // Mise à jour des ventes
-      state.sold = response.sold || {};
-      
-      const incoming = response.locks || {};
-      const now = Date.now();
-      
-      // Mise à jour des caches de grâce
-      for (const [key, lock] of Object.entries(incoming)) {
-        if (lock?.uid !== state.uid && lock.until > now) {
-          othersCache.hold[key] = now + CONFIG.OTHERS_GRACE_MS;
-        }
-      }
-      
-      // Nettoyage des holds expirés
-      for (const [key, expTime] of Object.entries(othersCache.hold)) {
-        if (expTime <= now) {
-          delete othersCache.hold[key];
-        }
-      }
-      
-      // Construction de la vue des locks
-      const visibleLocks = Object.create(null);
-      
-      // Base: locks du serveur
-      for (const [key, lock] of Object.entries(incoming)) {
-        if (lock?.until > now) {
-          visibleLocks[key] = { uid: lock.uid, until: lock.until };
-        }
-      }
-      
-      // Ajout des holds
-      for (const [key, expTime] of Object.entries(othersCache.hold)) {
-        if (!visibleLocks[key]) {
-          visibleLocks[key] = { uid: 'other', until: expTime };
-        }
-      }
-      
-      // Priorité aux locks locaux
-      for (const [key, lock] of Object.entries(state.locks)) {
-        if (lock?.uid === state.uid && lock.until > now) {
-          const current = visibleLocks[key];
-          if (!current || current.uid !== state.uid || lock.until > current.until) {
-            visibleLocks[key] = { uid: lock.uid, until: lock.until };
-          }
-        }
-      }
-      
-      state.locks = visibleLocks;
-      cellManager.paintAll();
-      
-    } catch (error) {
-      console.warn('Status load failed:', error);
-    }
-  },
-  
-  async finalize(blocks, linkUrl, name, email) {
-    return await this.requestWithRetry('/.netlify/functions/finalize', {
-      method: 'POST',
-      body: JSON.stringify({
-        uid: state.uid,
-        blocks,
-        linkUrl,
-        name,
-        email
-      })
-    });
-  }
-};
-
-// Gestionnaire d'événements optimisé
-const eventManager = {
-  init() {
-    this.setupMouseEvents();
-    this.setupKeyboardEvents();
-    this.setupFormEvents();
-    this.setupResizeObserver();
-  },
-  
-  setupMouseEvents() {
-    // Utilisation de la délégation d'événements
-    state.elements.grid.addEventListener('mousedown', this.handleMouseDown.bind(this));
-    window.addEventListener('mousemove', utils.throttle(this.handleMouseMove.bind(this), 16)); // 60fps
-    window.addEventListener('mouseup', this.handleMouseUp.bind(this));
-    state.elements.grid.addEventListener('click', this.handleClick.bind(this));
-  },
-  
-  handleMouseDown(e) {
-    const idx = selectionManager.idxFromClientXY(e.clientX, e.clientY);
-    if (idx < 0) return;
-    
-    state.drag = {
-      active: true,
-      startIdx: idx,
-      lastIdx: idx,
-      moved: false,
-      suppressClick: false,
-      blocked: false
-    };
-    
-    selectionManager.selectRect(idx, idx);
-    e.preventDefault();
-  },
-  
-  handleMouseMove(e) {
-    if (!state.drag.active) return;
-    
-    const idx = selectionManager.idxFromClientXY(e.clientX, e.clientY);
-    if (idx < 0 || idx === state.drag.lastIdx) return;
-    
-    state.drag.moved = true;
-    state.drag.lastIdx = idx;
-    selectionManager.selectRect(state.drag.startIdx, idx);
-  },
-  
-  handleMouseUp() {
-    if (state.drag.active) {
-      state.drag.suppressClick = state.drag.moved;
-    }
-    
-    state.drag.active = false;
-    state.drag.startIdx = -1;
-    state.drag.moved = false;
-    state.drag.lastIdx = -1;
-  },
-  
-  handleClick(e) {
-    if (state.drag.suppressClick) {
-      state.drag.suppressClick = false;
-      return;
-    }
-    
-    if (state.drag.active) return;
-    
-    const idx = selectionManager.idxFromClientXY(e.clientX, e.clientY);
-    if (idx >= 0) {
-      selectionManager.toggleCell(idx);
-    }
-  },
-  
-  setupKeyboardEvents() {
-    window.addEventListener('keydown', async (e) => {
-      if (e.key === 'Escape' && !state.elements.modal.classList.contains('hidden')) {
-        await this.closeModal();
-      }
-    });
-  },
-  
-  setupFormEvents() {
-    // Buy button
-    state.elements.buyBtn.addEventListener('click', async () => {
-      if (state.selected.size === 0) return;
-      
-      const selectedArray = Array.from(state.selected);
-      
-      try {
-        const response = await apiManager.reserve(selectedArray);
-        
-        if (response.conflicts?.length > 0 || 
-            response.locked?.length !== selectedArray.length) {
-          this.handleReservationConflict(selectedArray);
-          return;
-        }
-        
-        state.currentLock = response.locked.slice();
-        
-        uiManager.clearSelection();
-        
-        // Mise à jour de la sélection avec les cellules réservées
-        for (const idx of response.locked) {
-          state.selected.add(idx);
-          state.elements.grid.children[idx]?.classList.add('sel');
-        }
-        
-        modalManager.open();
-        
-      } catch (error) {
-        alert('Reservation failed: ' + (error?.message || error));
-      }
-    });
-    
-    // Close modal buttons
-    document.querySelectorAll('[data-close]').forEach(el => {
-      el.addEventListener('click', () => this.closeModal());
-    });
-    
-    // Form submission
-    state.elements.form.addEventListener('submit', this.handleFormSubmit.bind(this));
-  },
-  
-  async handleFormSubmit(e) {
-    e.preventDefault();
-    
-    let linkUrl = state.elements.link.value.trim();
-    const name = state.elements.name.value.trim();
-    const email = state.elements.email.value.trim();
-    
-    if (!linkUrl || !name || !email) return;
-    
-    if (!/^https?:\/\//i.test(linkUrl)) {
-      linkUrl = 'https://' + linkUrl;
-    }
-    
-    const confirmBtn = state.elements.confirm;
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'Processing…';
-    
-    try {
-      const blocks = state.currentLock.length ? state.currentLock.slice() : Array.from(state.selected);
-      
-      const response = await apiManager.finalize(blocks, linkUrl, name, email);
-      
-      if (response.taken) {
-        this.handleFinalizationConflict(blocks);
-        return;
-      }
-      
-      state.sold = response.soldMap || state.sold;
-      
-      try {
-        await apiManager.unlock(blocks);
-      } catch (error) {
-        console.warn('Unlock after finalize failed:', error);
-      }
-      
-      state.currentLock = [];
-      heartbeatManager.stop();
-      uiManager.clearSelection();
-      cellManager.paintAll();
-      modalManager.close();
-      
-    } catch (error) {
-      alert('Finalize failed: ' + (error?.message || error));
-    } finally {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = 'Confirm';
-    }
-  },
-  
-  handleReservationConflict(selectedArray) {
-    const rect = this.rectFromIndices(selectedArray);
-    if (rect) {
-      invalidRectManager.show(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
-    }
-    uiManager.clearSelection();
-    cellManager.paintAll();
-  },
-  
-  handleFinalizationConflict(blocks) {
-    const rect = this.rectFromIndices(blocks);
-    if (rect) {
-      invalidRectManager.show(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
-    }
-    uiManager.clearSelection();
-    cellManager.paintAll();
-  },
-  
-  async closeModal() {
-    const toRelease = state.currentLock.length ? state.currentLock.slice() : Array.from(state.selected);
-    
-    state.currentLock = [];
-    heartbeatManager.stop();
-    
-    if (toRelease.length > 0) {
-      try {
-        await apiManager.unlock(toRelease);
-      } catch (error) {
-        console.warn('Unlock on close failed:', error);
-      }
-    }
-    
-    modalManager.close();
-    uiManager.clearSelection();
-    
-    // Refresh différé pour éviter les conflicts de timing
-    setTimeout(async () => {
-      await apiManager.loadStatus();
-      cellManager.paintAll();
-    }, 150);
-  },
-  
-  rectFromIndices(arr) {
-    if (!arr?.length) return null;
-    
-    let r0 = Infinity, c0 = Infinity, r1 = -1, c1 = -1;
-    
-    for (const idx of arr) {
-      const [r, c] = utils.idxToRowCol(idx);
-      r0 = Math.min(r0, r); c0 = Math.min(c0, c);
-      r1 = Math.max(r1, r); c1 = Math.max(c1, c);
-    }
-    
-    return { r0, c0, r1, c1 };
-  },
-  
-  setupResizeObserver() {
-    // Utilisation de ResizeObserver pour une meilleure performance
-    if (window.ResizeObserver) {
-      const resizeObserver = new ResizeObserver(cellManager.recalcCellSize);
-      resizeObserver.observe(state.elements.grid);
-    } else {
-      // Fallback pour les navigateurs non supportés
-      window.addEventListener('resize', cellManager.recalcCellSize);
     }
   }
-};
 
-// Gestionnaire de modal optimisé
-const modalManager = {
-  open() {
-    state.elements.modal.classList.remove('hidden');
-    
-    const blocksSold = Object.keys(state.sold).length;
-    const pixelsSold = blocksSold * 100;
-    const currentPrice = utils.getCurrentPrice();
-    const selectedPixels = state.selected.size * 100;
+  return out;
+}
+
+
+let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
+let blockedDuringDrag = false;
+
+(function build(){
+  const frag=document.createDocumentFragment();
+  for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='cell'; d.dataset.idx=i; frag.appendChild(d); }
+  grid.appendChild(frag);
+  const cs = getComputedStyle(grid);
+  if (cs.position === 'static') grid.style.position = 'relative';
+})();
+
+const invalidEl = document.createElement('div');
+invalidEl.id = 'invalidRect';
+Object.assign(invalidEl.style, { position:'absolute', border:'2px solid #ef4444', background:'rgba(239,68,68,0.08)', pointerEvents:'none', display:'none', zIndex:'999' });
+const invalidIcon = document.createElement('div');
+Object.assign(invalidIcon.style, { position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none', zIndex:'1000' });
+invalidIcon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle><circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" stroke-width="2"></circle><line x1="7" y1="17" x2="17" y2="7" stroke="#ef4444" stroke-width="2" stroke-linecap="round"></line></svg>`;
+invalidEl.appendChild(invalidIcon);
+grid.appendChild(invalidEl);
+
+
+function showInvalidRect(r0,c0,r1,c1, ttl=900){
+  const { w:CW, h:CH } = CELL;
+  const left=c0*CW, top=r0*CH, w=(c1-c0+1)*CW, h=(r1-r0+1)*CH;
+  Object.assign(invalidEl.style,{ left:left+'px', top:top+'px', width:w+'px', height:h+'px', display:'block' });
+  const size = Math.max(16, Math.min(64, Math.floor(Math.min(w, h) * 0.7)));
+  const svg = invalidIcon.querySelector('svg'); svg.style.width=size+'px'; svg.style.height=size+'px';
+  if (ttl>0) setTimeout(()=>{ invalidEl.style.display='none'; }, ttl);
+}
+function hideInvalidRect(){ invalidEl.style.display='none'; }
+
+function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
+function rowColToIdx(r,c){ return r*N + c; }
+function isBlockedCell(idx){
+  if (sold[idx]) return true;
+  const l = locks[idx];
+  return !!(l && l.until > Date.now() && l.uid !== uid);
+}
+
+function paintCell(idx){
+  const d=grid.children[idx]; const s=sold[idx]; const l=locks[idx];
+  // DEBUG TEMPORAIRE pour quelques cellules
+  if (idx < 5 || (l && l.until > Date.now())) {
+    console.log(`🎨 [paintCell] idx=${idx}:`, {
+      sold: !!s,
+      lock: l ? {uid: l.uid, until: new Date(l.until).toLocaleTimeString()} : null,
+      isReserved: !!(l && l.until > Date.now()),
+      isOtherUser: !!(l && l.until > Date.now() && l.uid !== uid)
+    });
+  }
+  
+  const reserved = l && l.until > Date.now() && !s;
+  const reservedByOther = reserved && l.uid !== uid;
+  d.classList.toggle('sold', !!s);
+  d.classList.toggle('pending', !!reservedByOther);
+  d.classList.toggle('sel', selected.has(idx));
+  
+  if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)){
+    const [r,c]=idxToRowCol(idx); const { w:CW, h:CH }=CELL;
+    const offX=(c - s.rect.x)*CW, offY=(r - s.rect.y)*CH;
+    d.style.backgroundImage=`url(${s.imageUrl})`;
+    d.style.backgroundSize=`${s.rect.w*CW}px ${s.rect.h*CH}px`;
+    d.style.backgroundPosition=`-${offX}px -${offY}px`;
+  } else {
+    d.style.backgroundImage=''; d.style.backgroundSize=''; d.style.backgroundPosition='';
+  }
+  if (s){
+    d.title=(s.name?s.name+' · ':'')+(s.linkUrl||'');
+    if(!d.firstChild){ const a=document.createElement('a'); a.className='region-link'; a.target='_blank'; d.appendChild(a); }
+    d.firstChild.href = s.linkUrl || '#';
+  } else {
+    d.title=''; if (d.firstChild) d.firstChild.remove();
+  }
+}
+function paintAll(){ for(let i=0;i<N*N;i++) paintCell(i); refreshTopbar(); }
+
+function refreshTopbar(){
+  const blocksSold=Object.keys(sold).length, pixelsSold=blocksSold*100;
+  const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
+  priceLine.textContent = `1 pixel = ${formatMoney(currentPrice)}`;
+  //const left = TOTAL_PIXELS - pixelsSold;
+  //pixelsLeftEl.textContent = `${formatInt(left)} pixels left`;
+  // Afficher toujours le total fixe "1,000,000 pixels"
+  pixelsLeftEl.textContent = `${TOTAL_PIXELS.toLocaleString('en-US')} pixels`;
+
+  const selectedPixels = selected.size * 100;
+  if (selectedPixels > 0) {
     const total = selectedPixels * currentPrice;
-    
-    state.elements.modalStats.textContent = 
-      `${utils.formatInt(selectedPixels)} px — ${utils.formatMoney(total)}`;
-    
-    if (state.currentLock.length > 0) {
-      heartbeatManager.start();
-    }
-  },
-  
-  close() {
-    state.elements.modal.classList.add('hidden');
-    heartbeatManager.stop();
-  }
-};
-
-// Gestionnaire de régions optimisé avec polling séparé
-const regionManager = {
-  interval: null,
-  
-  init() {
-    this.startPolling();
-    this.initialLoad();
-  },
-  
-  async initialLoad() {
-    try {
-      await apiManager.loadStatus();
-      cellManager.paintAll();
-      this.render();
-    } catch (error) {
-      console.warn('Initial regions load failed:', error);
-    }
-  },
-  
-  startPolling() {
-    // Polling séparé pour les régions pour éviter les conflicts
-    this.interval = setInterval(async () => {
-      try {
-        const response = await fetch(`/.netlify/functions/status?ts=${Date.now()}`);
-        const data = await response.json();
-        
-        if (data?.ok) {
-          // Mise à jour sélective: seulement sold et regions, pas les locks
-          const soldChanged = JSON.stringify(state.sold) !== JSON.stringify(data.sold);
-          
-          state.sold = data.sold || {};
-          window.regions = data.regions || {};
-          
-          if (soldChanged) {
-            cellManager.paintAll();
-          }
-          
-          this.render();
-        }
-      } catch (error) {
-        console.warn('Regions polling failed:', error);
-      }
-    }, CONFIG.REGIONS_POLLING_INTERVAL);
-  },
-  
-  render() {
-    const gridEl = state.elements.grid;
-    if (!gridEl) return;
-    
-    // Suppression optimisée des overlays existants
-    const existingOverlays = gridEl.querySelectorAll('.region-overlay');
-    existingOverlays.forEach(node => node.remove());
-    
-    const firstCell = gridEl.querySelector('.cell');
-    const cellSize = firstCell ? firstCell.offsetWidth : 10;
-    
-    // Cache des liens de région
-    const regionLinks = Object.create(null);
-    for (const [idx, sold] of Object.entries(state.sold)) {
-      if (sold?.regionId && sold.linkUrl && !regionLinks[sold.regionId]) {
-        regionLinks[sold.regionId] = sold.linkUrl;
-      }
-    }
-    
-    // Fragment pour batch DOM insertion
-    const fragment = document.createDocumentFragment();
-    
-    for (const [regionId, region] of Object.entries(window.regions || {})) {
-      if (!region?.rect || !region.imageUrl) continue;
-      
-      const { x, y, w, h } = region.rect;
-      const topLeftIdx = y * CONFIG.GRID_SIZE + x;
-      const topLeftCell = gridEl.querySelector(`.cell[data-idx="${topLeftIdx}"]`);
-      
-      if (!topLeftCell) continue;
-      
-      const overlay = document.createElement('a');
-      overlay.className = 'region-overlay';
-      
-      if (regionLinks[regionId]) {
-        overlay.href = regionLinks[regionId];
-        overlay.target = '_blank';
-        overlay.rel = 'noopener nofollow';
-      }
-      
-      Object.assign(overlay.style, {
-        position: 'absolute',
-        left: topLeftCell.offsetLeft + 'px',
-        top: topLeftCell.offsetTop + 'px',
-        width: (w * cellSize) + 'px',
-        height: (h * cellSize) + 'px',
-        backgroundImage: `url("${region.imageUrl}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        zIndex: '999'
-      });
-      
-      fragment.appendChild(overlay);
-    }
-    
-    gridEl.appendChild(fragment);
-    
-    // Style de position une seule fois
-    if (gridEl.style.position !== 'relative') {
-      gridEl.style.position = 'relative';
-      gridEl.style.zIndex = '2';
-    }
-  },
-  
-  stop() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-  }
-};
-
-// Gestionnaire de polling principal optimisé
-const pollingManager = {
-  interval: null,
-  
-  start() {
-    this.stop();
-    
-    this.interval = setInterval(async () => {
-      // Nettoyage périodique des locks expirés
-      lockManager.cleanExpiredLocks();
-      
-      await apiManager.loadStatus();
-      cellManager.paintAll();
-    }, CONFIG.MAIN_POLLING_INTERVAL);
-  },
-  
-  stop() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-  }
-};
-
-// Gestionnaire de performance et monitoring
-const performanceManager = {
-  frameTimeBuffer: [],
-  lastFrameTime: 0,
-  
-  init() {
-    this.startMonitoring();
-  },
-  
-  startMonitoring() {
-    // Monitoring des performances de rendu
-    const checkFrameRate = () => {
-      const now = performance.now();
-      if (this.lastFrameTime) {
-        const frameTime = now - this.lastFrameTime;
-        this.frameTimeBuffer.push(frameTime);
-        
-        if (this.frameTimeBuffer.length > 60) {
-          this.frameTimeBuffer.shift();
-        }
-        
-        // Log si performance dégradée
-        const avgFrameTime = this.frameTimeBuffer.reduce((a, b) => a + b, 0) / this.frameTimeBuffer.length;
-        if (avgFrameTime > 20) { // Plus de 20ms = moins de 50fps
-          console.warn(`Performance warning: Average frame time ${avgFrameTime.toFixed(2)}ms`);
-        }
-      }
-      this.lastFrameTime = now;
-      requestAnimationFrame(checkFrameRate);
-    };
-    
-    requestAnimationFrame(checkFrameRate);
-  },
-  
-  // Fonction de nettoyage pour libérer la mémoire
-  cleanup() {
-    cellManager.cellStateCache.clear();
-    apiManager.requestCache.clear();
-    this.frameTimeBuffer = [];
-  }
-};
-
-// Construction optimisée de la grille
-function buildGrid() {
-  const fragment = document.createDocumentFragment();
-  const totalCells = CONFIG.GRID_SIZE * CONFIG.GRID_SIZE;
-  
-  // Création en batch pour optimiser les performances
-  const batchSize = 1000;
-  let createdCells = 0;
-  
-  function createBatch() {
-    const currentBatchSize = Math.min(batchSize, totalCells - createdCells);
-    
-    for (let i = 0; i < currentBatchSize; i++) {
-      const cellIndex = createdCells + i;
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      cell.dataset.idx = cellIndex;
-      fragment.appendChild(cell);
-    }
-    
-    createdCells += currentBatchSize;
-    
-    if (createdCells < totalCells) {
-      // Continuation asynchrone pour éviter de bloquer l'UI
-      requestAnimationFrame(createBatch);
-    } else {
-      // Finition de la construction
-      state.elements.grid.appendChild(fragment);
-      
-      const computedStyle = getComputedStyle(state.elements.grid);
-      if (computedStyle.position === 'static') {
-        state.elements.grid.style.position = 'relative';
-      }
-      
-      cellManager.recalcCellSize();
-    }
-  }
-  
-  createBatch();
+    buyBtn.textContent = `Buy Pixels — ${formatInt(selectedPixels)} px (${formatMoney(total)})`;
+    buyBtn.disabled = false;
+  } else { buyBtn.textContent = `Buy Pixels`; buyBtn.disabled = true; }
 }
 
-// Fonction de débogage améliorée
-function debugInfo() {
-  return {
-    selectedCount: state.selected.size,
-    locksCount: Object.keys(state.locks).length,
-    soldCount: Object.keys(state.sold).length,
-    currentLockCount: state.currentLock.length,
-    cacheSize: cellManager.cellStateCache.size,
-    isDragging: state.drag.active,
-    heartbeatActive: !!heartbeatManager.interval,
-    performance: {
-      avgFrameTime: performanceManager.frameTimeBuffer.length > 0 
-        ? (performanceManager.frameTimeBuffer.reduce((a, b) => a + b, 0) / performanceManager.frameTimeBuffer.length).toFixed(2) + 'ms'
-        : 'N/A'
-    }
-  };
+function clearSelection(){
+  for(const i of selected) grid.children[i].classList.remove('sel');
+  selected.clear(); refreshTopbar();
+}
+function applySelection(newSet){
+  // retire les anciens
+  for (const idx of selected) if (!newSet.has(idx)) grid.children[idx].classList.remove('sel');
+  // ajoute les nouveaux
+  for (const idx of newSet) if (!selected.has(idx)) grid.children[idx].classList.add('sel');
+  selected = newSet;
+  refreshTopbar();
 }
 
-// Fonction de nettoyage manuel améliorée
-function debugCleanExpiredLocks() {
-  const before = Object.keys(state.locks).length;
-  lockManager.cleanExpiredLocks();
-  const after = Object.keys(state.locks).length;
-  
-  console.log(`🧹 [DEBUG] Lock cleanup: ${before} -> ${after} locks`);
-  console.log('🧹 [DEBUG] Current state:', debugInfo());
-  
-  return { before, after, cleaned: before - after };
+function selectRect(aIdx,bIdx){
+  const [ar,ac]=idxToRowCol(aIdx), [br,bc]=idxToRowCol(bIdx);
+  const r0=Math.min(ar,br), r1=Math.max(ar,br), c0=Math.min(ac,bc), c1=Math.max(ac,bc);
+  blockedDuringDrag = false;
+  for(let r=r0;r<=r1;r++){ for(let c=c0;c<=c1;c++){ const idx=rowColToIdx(r,c); if (isBlockedCell(idx)) { blockedDuringDrag = true; break; } } if (blockedDuringDrag) break; }
+  if (blockedDuringDrag){ clearSelection(); showInvalidRect(r0,c0,r1,c1,900); return; }
+  // ... après le test blockedDuringDrag ...
+  const ns = new Set();
+  for (let r=r0; r<=r1; r++) for (let c=c0; c<=c1; c++) ns.add(rowColToIdx(r,c));
+  applySelection(ns);
+
+  hideInvalidRect();
+  refreshTopbar();
 }
 
-// Gestionnaire d'erreurs global
-const errorManager = {
-  lastError: null,
-  errorCount: 0,
-  
-  handle(error, context = 'unknown') {
-    this.errorCount++;
-    this.lastError = { error, context, timestamp: Date.now() };
-    
-    console.error(`[${context}] Error #${this.errorCount}:`, error);
-    
-    // Nettoyage automatique en cas d'erreurs répétées
-    if (this.errorCount > 10) {
-      console.warn('Multiple errors detected, performing cleanup...');
-      performanceManager.cleanup();
-      this.errorCount = 0;
-    }
-  }
-};
-
-// Initialisation principale
-async function init() {
-  try {
-    // Cache des éléments DOM
-    initDOMCache();
-    
-    // Construction de la grille
-    buildGrid();
-    
-    // Initialisation des gestionnaires
-    invalidRectManager.init();
-    eventManager.init();
-    performanceManager.init();
-    regionManager.init();
-    
-    // Chargement initial
-    await apiManager.loadStatus();
-    cellManager.paintAll();
-    
-    // Démarrage du polling principal
-    pollingManager.start();
-    
-    console.log('✅ App initialized successfully');
-    console.log('📊 Initial state:', debugInfo());
-    
-  } catch (error) {
-    errorManager.handle(error, 'initialization');
-  }
+function toggleCell(idx){
+  if (isBlockedCell(idx)) return;
+  const d=grid.children[idx];
+  if (selected.has(idx)) { selected.delete(idx); d.classList.remove('sel'); }
+  else { selected.add(idx); d.classList.add('sel'); }
+  refreshTopbar();
 }
 
-// Nettoyage à la fermeture
-window.addEventListener('beforeunload', () => {
-  pollingManager.stop();
-  regionManager.stop();
-  heartbeatManager.stop();
-  performanceManager.cleanup();
+function idxFromClientXY(x,y){
+  const rect=grid.getBoundingClientRect();
+  const { w:CW, h:CH } = CELL;
+  const gx=Math.floor((x-rect.left)/CW), gy=Math.floor((y-rect.top)/CH);
+  if (gx<0||gy<0||gx>=N||gy>=N) return -1;
+  return gy*N + gx;
+}
+
+grid.addEventListener('mousedown',(e)=>{
+  const idx=idxFromClientXY(e.clientX,e.clientY); if(idx<0) return;
+  isDragging=true; dragStartIdx=idx; lastDragIdx=idx; movedDuringDrag=false; suppressNextClick=false;
+  selectRect(idx, idx); e.preventDefault();
+});
+window.addEventListener('mousemove',(e)=>{
+  if(!isDragging) return;
+  const idx=idxFromClientXY(e.clientX,e.clientY); if(idx<0) return;
+  if(idx!==lastDragIdx){ movedDuringDrag=true; lastDragIdx=idx; }
+  selectRect(dragStartIdx, idx);
+});
+window.addEventListener('mouseup',()=>{
+  if (isDragging){ suppressNextClick=movedDuringDrag; }
+  isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1;
+});
+grid.addEventListener('click',(e)=>{
+  if(suppressNextClick){ suppressNextClick=false; return; }
+  if(isDragging) return;
+  const idx=idxFromClientXY(e.clientX,e.clientY); if(idx<0) return;
+  toggleCell(idx);
 });
 
-// Exposition des fonctions utiles pour le débogage
-window.debugInfo = debugInfo;
-window.debugCleanExpiredLocks = debugCleanExpiredLocks;
-window.state = state; // Pour inspection en dev
+function openModal(){ 
+  modal.classList.remove('hidden');
+  const blocksSold=Object.keys(sold).length, pixelsSold=blocksSold*100;
+  const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
+  const selectedPixels = selected.size * 100;
+  const total = selectedPixels * currentPrice;
+  modalStats.textContent = `${formatInt(selectedPixels)} px — ${formatMoney(total)}`;
+  
+  // ✅ UN SEUL heartbeat !
+  if (currentLock.length) {
+    startHeartbeat();
+    console.log('[MODAL] Started heartbeat for', currentLock.length, 'blocks');
+  }
+}
 
-// Démarrage de l'application
-init();
+function closeModal(){ 
+  modal.classList.add('hidden'); 
+  stopHeartbeat(); // ← C'est suffisant, pas besoin de répéter
+}
+
+document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
+  // PRENDS un snapshot AVANT
+  const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
+
+  // 🔒 Couper toute relock possible AVANT d’unlock
+  currentLock = [];
+  stopHeartbeat();
+
+  // Libère au serveur
+  if (toRelease.length) {
+    try { await unlock(toRelease); } catch {}
+  }
+
+  closeModal();
+  clearSelection();
+  setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
+}));
+
+
+window.addEventListener('keydown', async (e)=>{
+  if(e.key==='Escape' && !modal.classList.contains('hidden')){
+    const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
+
+    currentLock = [];
+    stopHeartbeat();
+
+    if (toRelease.length) {
+      try { await unlock(toRelease); } catch {}
+    }
+
+    closeModal();
+    clearSelection();
+    setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
+  }
+});
+
+
+async function reserve(indices){
+  const r = await fetch('/.netlify/functions/reserve', {
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
+  });
+  const res=await r.json();
+  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+
+  // Ensure local locks reflect what we just reserved, with a full TTL
+  const now = Date.now();
+  for (const i of (res.locked||[])){
+    locks[i] = { uid, until: now + 300000 };
+  }
+  // Merge incoming (others' locks) without dropping ours
+  locks = mergeLocksPreferLocal(locks, res.locks || {});
+  paintAll();
+  
+  // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
+  holdIncomingLocksUntil = Date.now() + 8000;
+  // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
+  currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
+  return res;
+}
+
+async function unlock(indices){
+  console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
+  
+  const r = await fetch('/.netlify/functions/unlock',{
+    method:'POST', 
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify({ uid, blocks: indices })
+  });
+  
+  console.log('🔓 [UNLOCK] Réponse HTTP:', r.status, r.ok);
+  
+  const res = await r.json(); 
+  console.log('🔓 [UNLOCK] Réponse serveur:', res);
+  
+  if(!r.ok || !res.ok) {
+    console.error('❌ [UNLOCK] Échec:', res.error || ('HTTP '+r.status));
+    throw new Error(res.error || ('HTTP '+r.status));
+  }
+  
+  // ✅ CORRECTION CRITIQUE : Mettre à jour les locks ET supprimer la protection
+  locks = res.locks || {}; 
+  holdIncomingLocksUntil = 0; // ✅ Supprimer immédiatement la protection !
+  
+  console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
+  console.log('🔄 [UNLOCK] Protection supprimée');
+  
+  paintAll(); 
+  return res;
+}
+
+
+buyBtn.addEventListener('click', async ()=>{
+  if(!selected.size) return;
+  const want = Array.from(selected);
+  try{
+    const got = await reserve(want);
+    if ((got.conflicts && got.conflicts.length>0) || (got.locked && got.locked.length !== want.length)){
+      const rect = rectFromIndices(want);
+      if (rect) showInvalidRect(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
+      clearSelection(); paintAll();
+      return;
+    }
+    // remember our current lock and start heartbeat in modal
+    currentLock = got.locked.slice();
+    clearSelection();
+    for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
+    openModal();
+  }catch(e){
+    alert('Reservation failed: ' + (e?.message || e));
+  }
+});
+
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  let linkUrl = linkInput.value.trim();
+  const name  = nameInput.value.trim();
+  const email = emailInput.value.trim();
+  if(!linkUrl || !name || !email){ return; }
+  if (!/^https?:\/\//i.test(linkUrl)) linkUrl = 'https://' + linkUrl;
+
+  confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
+  try{
+    const blocks = currentLock.length ? currentLock.slice() : Array.from(selected);
+    const r = await fetch('/.netlify/functions/finalize', {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({ uid, blocks, linkUrl, name, email })
+    });
+    const res = await r.json();
+    if (r.status===409 && res.taken){
+      const rect = rectFromIndices(blocks);
+      if (rect) showInvalidRect(rect.r0, rect.c0, rect.r1, rect.c1, 1200);
+      clearSelection(); paintAll();
+      return;
+    }
+    if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
+    sold = res.soldMap || sold;
+    try{ await unlock(blocks); }catch{}
+    currentLock = []; stopHeartbeat();
+    clearSelection(); paintAll(); closeModal();
+  }catch(err){
+    alert('Finalize failed: '+(err?.message||err));
+  }finally{
+    confirmBtn.disabled=false; confirmBtn.textContent='Confirm';
+  }
+});
+
+function rectFromIndices(arr){
+  if (!arr || !arr.length) return null;
+  let r0=999, c0=999, r1=-1, c1=-1;
+  for (const idx of arr){
+    const r=Math.floor(idx/N), c=idx%N;
+    if (r<r0) r0=r; if (c<c0) c0=c; if (r>r1) r1=r; if (c>c1) c1=c;
+  }
+  return { r0,c0,r1,c1 };
+}
+
+// Remplacez le début de loadStatus() par ceci pour voir la réponse brute :
+
+// CORRECTION CRITIQUE : Nettoyer les locks expirés dans loadStatus
+async function loadStatus(){
+  try{
+    const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
+    const s = await r.json();
+    if (!s || !s.ok) return;
+
+    // 1) Màj des ventes
+    sold = s.sold || {};
+
+    const incoming = s.locks || {};
+    const now = Date.now();
+
+    // 2) Renouvelle la "dernière vue" pour les locks d'AUTRUI présents dans la réponse
+    for (const [k, l] of Object.entries(incoming)) {
+      if (!l) continue;
+      if (l.uid !== uid && l.until > now) {
+        othersHold[k] = now + OTHERS_GRACE_MS;  // on les gardera au moins jusque-là
+      }
+    }
+
+    // 3) Purge des holds expirés (pas vus depuis > OTHERS_GRACE_MS)
+    for (const [k, exp] of Object.entries(othersHold)) {
+      if (exp <= now) delete othersHold[k];
+    }
+
+    // 4) Construit la carte de locks "visibles"
+    const visible = Object.create(null);
+
+    // a) base = locks renvoyés par le serveur (si encore valides)
+    for (const [k, l] of Object.entries(incoming)) {
+      if (l && l.until > now) visible[k] = { uid: l.uid, until: l.until };
+    }
+
+    // b) ajoute les holds (locks d'autrui "aperçus récemment") absents du snapshot courant
+    for (const [k, exp] of Object.entries(othersHold)) {
+      if (!visible[k]) visible[k] = { uid: 'other', until: exp };
+    }
+
+    // c) par-dessus, impose MES locks locaux s'ils sont plus longs/encore valides
+    for (const [k, l] of Object.entries(locks || {})) {
+      if (l && l.uid === uid && l.until > now) {
+        const cur = visible[k];
+        if (!cur || cur.uid !== uid || l.until > (cur.until || 0)) {
+          visible[k] = { uid: l.uid, until: l.until };
+        }
+      }
+    }
+
+    // 5) remplace la carte active et repeins
+    locks = visible;
+    paintAll();
+  } catch {}
+}
+
+(async function init(){ 
+  await loadStatus(); paintAll(); 
+  /*setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); */
+  setInterval(async()=>{ 
+  console.log('⏰ [POLLING PRINCIPAL] Début cycle');
+  await loadStatus(); 
+  paintAll(); 
+  console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);
+}, 2500);
+
+}
+
+)();
+
+window.__regionsPoll && clearInterval(window.__regionsPoll);
+window.__regionsPoll = setInterval(async () => {
+  try {
+    console.log('🌍 [REGIONS] Début polling regions...');
+    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
+    const data = await res.json();
+    
+    // SEULEMENT regions et sold, PAS de locks !
+    window.sold = data.sold || {};
+    window.regions = data.regions || {};
+    
+    console.log('🌍 [REGIONS] Mise à jour:', {
+      regions: Object.keys(window.regions).length,
+      sold: Object.keys(window.sold).length
+    });
+    
+    if (typeof window.renderRegions === 'function') window.renderRegions();
+    console.log('🌍 [REGIONS] Terminé');
+  } catch (e) { 
+    console.warn('❌ [REGIONS] Erreur:', e);
+  }
+}, 15000);
+
+// Regions overlay (kept)
+window.regions = window.regions || {};
+function renderRegions() {
+  const gridEl = document.getElementById('grid');
+  if (!gridEl) return;
+  gridEl.querySelectorAll('.region-overlay').forEach(n => n.remove());
+  const firstCell = gridEl.querySelector('.cell');
+  const size = firstCell ? firstCell.offsetWidth : 10;
+  const regionLink = {};
+  for (const [idx, s] of Object.entries(window.sold || {})) {
+    if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) regionLink[s.regionId] = s.linkUrl;
+  }
+  for (const [rid, reg] of Object.entries(window.regions || {})) {
+    if (!reg || !reg.rect || !reg.imageUrl) continue;
+    const { x, y, w, h } = reg.rect;
+    const idxTL = y * 100 + x;
+    const tl = gridEl.querySelector(`.cell[data-idx="${idxTL}"]`);
+    if (!tl) continue;
+    const a = document.createElement('a');
+    a.className = 'region-overlay';
+    if (regionLink[rid]) { a.href = regionLink[rid]; a.target = '_blank'; a.rel = 'noopener nofollow'; }
+    Object.assign(a.style, {
+      position: 'absolute',
+      left: tl.offsetLeft + 'px',
+      top:  tl.offsetTop  + 'px',
+      width:  (w * size) + 'px',
+      height: (h * size) + 'px',
+      backgroundImage: `url("${reg.imageUrl}")`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      zIndex: 999
+    });
+    gridEl.appendChild(a);
+  }
+  gridEl.style.position = 'relative';
+  gridEl.style.zIndex = 2;
+}
+window.renderRegions = renderRegions;
+
+// Initial regions fetch + periodic refresh (15s)
+(async function regionsBootOnce(){
+  try {
+    // Utilise la même fonction que le polling principal
+    await loadStatus();
+    paintAll(); // S'assurer que tout est rendu
+    console.log('[regions] initial load via loadStatus()');
+  } catch (e) { 
+    console.warn('[regions] initial load failed', e); 
+  }
+})();
+console.log('✅ Unified polling implemented - no more timing conflicts!');
+/*console.log('app.js (robust locks + heartbeat) loaded');*/
+
+// BONUS : Fonction de nettoyage manuel pour débugger
+function debugCleanExpiredLocks() {
+  const now = Date.now();
+  const before = Object.keys(locks).length;
+  
+  for (const [k, l] of Object.entries(locks)) {
+    if (!l || l.until <= now) {
+      delete locks[k];
+      console.log(`🧹 [DEBUG] Supprimé lock expiré ${k}`);
+    }
+  }
+  
+  const after = Object.keys(locks).length;
+  console.log(`🧹 [DEBUG] Nettoyage: ${before} -> ${after} locks`);
+  paintAll();
+}
