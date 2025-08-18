@@ -1,4 +1,6 @@
 // app.js — robust locks: local-wins merge + heartbeat during modal
+import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
+
 // Anti-flicker pour les locks d’autrui
 const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
 const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
@@ -103,35 +105,6 @@ function mergeLocksPreferLocal(local, incoming){
 
   return out;
 }
-
-// === JWT Auth Setup ===
-let jwtToken = null;
-// Utilitaire pour ajouter l'en-tête Authorization
-
-async function fetchWithJWT(url, options = {}) {
-  const token = localStorage.getItem('jwtToken');
-  const headers = options.headers || {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(url, { ...options, headers });
-}
-// Récupération du token JWT (exemple à adapter selon votre backend)
-async function fetchJwtToken() {
-  try {
-    const res = await fetch('/.netlify/functions/get-token');
-    const data = await res.json();
-    if (res.ok && data.token) {
-      jwtToken = data.token;
-      console.log('[JWT] Token reçu:', jwtToken);
-    } else {
-      console.error('[JWT] Erreur token:', data.error || res.statusText);
-    }
-  } catch (e) {
-    console.error('[JWT] Exception lors de la récupération du token', e);
-  }
-}
-
-// Appelle cette fonction au chargement
-fetchJwtToken();
 
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;

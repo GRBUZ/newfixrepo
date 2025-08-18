@@ -1,3 +1,4 @@
+import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
 /* iw_finalize_upload_patch.js — UID unify + DOM-selection + file input id compat */
 (function(){
   const grid        = document.getElementById('grid');
@@ -63,7 +64,7 @@
   async function unlockSelection(){
     try{
       const blocks=getSelectedIndices(); if(!blocks.length) return;
-      await fetch('/.netlify/functions/unlock',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks})});
+      await fetchWithJWT('/.netlify/functions/unlock',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks})});
     }catch(_){}
   }
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') unlockSelection(); },{passive:true});
@@ -97,7 +98,7 @@
     }catch(_){ /* ignore if not present */ }
 
     // Finalize WITH uid
-    const fRes=await fetch('/.netlify/functions/finalize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,name,linkUrl,blocks})});
+    const fRes=await fetchWithJWT('/.netlify/functions/finalize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,name,linkUrl,blocks})});
     const out=await fRes.json();
     if(!out.ok){ alert(out.error||'Finalize failed'); confirmBtn.disabled=false; return; }
 
@@ -108,7 +109,7 @@
         if(!file.type.startsWith('image/')) throw new Error('Please upload an image file.');
         if(file.size>5*1024*1024) throw new Error('Max 5 MB.');
         const fd=new FormData(); fd.append('file',file,file.name); fd.append('regionId',out.regionId);
-        const upRes=await fetch('/.netlify/functions/upload',{method:'POST',body:fd});
+        const upRes=await fetchWithJWT('/.netlify/functions/upload',{method:'POST',body:fd});
         const up=await upRes.json(); if(!up.ok) throw new Error(up.error||'UPLOAD_FAILED');
         console.log('[IW patch] image linked:', up.imageUrl);
       }
