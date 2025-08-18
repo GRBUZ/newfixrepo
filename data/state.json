@@ -7369,68 +7369,7 @@
       "regionId": "r_med2dt87_m6t9"
     }
   },
-  "locks": {
-    "1257": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1258": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1259": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1260": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1261": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1357": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1358": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1359": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1360": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1361": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1457": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1458": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1459": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1460": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    },
-    "1461": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755510611455
-    }
-  },
+  "locks": {},
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
