@@ -1,6 +1,6 @@
 // app.js — robust locks: local-wins merge + heartbeat during modal
 // Anti-flicker pour les locks d’autrui
-/*const othersLastSeen = Object.create(null); */// idx -> lastSeen timestamp
+const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
 const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
 const othersHold = Object.create(null);    // idx -> expiresAt (timestamp)
 
@@ -147,12 +147,12 @@ function paintCell(idx){
   const d=grid.children[idx]; const s=sold[idx]; const l=locks[idx];
   // DEBUG TEMPORAIRE pour quelques cellules
   if (idx < 5 || (l && l.until > Date.now())) {
-    /*console.log(`🎨 [paintCell] idx=${idx}:`, {
+    console.log(`🎨 [paintCell] idx=${idx}:`, {
       sold: !!s,
       lock: l ? {uid: l.uid, until: new Date(l.until).toLocaleTimeString()} : null,
       isReserved: !!(l && l.until > Date.now()),
       isOtherUser: !!(l && l.until > Date.now() && l.uid !== uid)
-    });*/
+    });
   }
   
   const reserved = l && l.until > Date.now() && !s;
@@ -263,7 +263,7 @@ function openModal(){
   // ✅ UN SEUL heartbeat !
   if (currentLock.length) {
     startHeartbeat();
-    /*console.log('[MODAL] Started heartbeat for', currentLock.length, 'blocks');*/
+    console.log('[MODAL] Started heartbeat for', currentLock.length, 'blocks');
   }
 }
 
@@ -335,7 +335,7 @@ async function reserve(indices){
 }
 
 async function unlock(indices){
-  /*console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);*/
+  console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
   
   const r = await fetch('/.netlify/functions/unlock',{
     method:'POST', 
@@ -343,10 +343,10 @@ async function unlock(indices){
     body: JSON.stringify({ uid, blocks: indices })
   });
   
-  /*console.log('🔓 [UNLOCK] Réponse HTTP:', r.status, r.ok);*/
+  console.log('🔓 [UNLOCK] Réponse HTTP:', r.status, r.ok);
   
   const res = await r.json(); 
-  /*console.log('🔓 [UNLOCK] Réponse serveur:', res);*/
+  console.log('🔓 [UNLOCK] Réponse serveur:', res);
   
   if(!r.ok || !res.ok) {
     console.error('❌ [UNLOCK] Échec:', res.error || ('HTTP '+r.status));
@@ -357,8 +357,8 @@ async function unlock(indices){
   locks = res.locks || {}; 
   holdIncomingLocksUntil = 0; // ✅ Supprimer immédiatement la protection !
   
-  /*console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
-  console.log('🔄 [UNLOCK] Protection supprimée');*/
+  console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
+  console.log('🔄 [UNLOCK] Protection supprimée');
   
   paintAll(); 
   return res;
@@ -491,10 +491,10 @@ async function loadStatus(){
   await loadStatus(); paintAll(); 
   /*setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); */
   setInterval(async()=>{ 
-  /*console.log('⏰ [POLLING PRINCIPAL] Début cycle');*/
+  console.log('⏰ [POLLING PRINCIPAL] Début cycle');
   await loadStatus(); 
   paintAll(); 
-  /*console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);*/
+  console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);
 }, 2500);
 
 }
@@ -504,7 +504,7 @@ async function loadStatus(){
 window.__regionsPoll && clearInterval(window.__regionsPoll);
 window.__regionsPoll = setInterval(async () => {
   try {
-    /*console.log('🌍 [REGIONS] Début polling regions...');*/
+    console.log('🌍 [REGIONS] Début polling regions...');
     const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
     const data = await res.json();
     
@@ -512,13 +512,13 @@ window.__regionsPoll = setInterval(async () => {
     window.sold = data.sold || {};
     window.regions = data.regions || {};
     
-    /*console.log('🌍 [REGIONS] Mise à jour:', {
+    console.log('🌍 [REGIONS] Mise à jour:', {
       regions: Object.keys(window.regions).length,
       sold: Object.keys(window.sold).length
-    });*/
+    });
     
     if (typeof window.renderRegions === 'function') window.renderRegions();
-    /*console.log('🌍 [REGIONS] Terminé');*/
+    console.log('🌍 [REGIONS] Terminé');
   } catch (e) { 
     console.warn('❌ [REGIONS] Erreur:', e);
   }
@@ -570,12 +570,12 @@ window.renderRegions = renderRegions;
     // Utilise la même fonction que le polling principal
     await loadStatus();
     paintAll(); // S'assurer que tout est rendu
-    /*console.log('[regions] initial load via loadStatus()');*/
+    console.log('[regions] initial load via loadStatus()');
   } catch (e) { 
     console.warn('[regions] initial load failed', e); 
   }
 })();
-/*console.log('✅ Unified polling implemented - no more timing conflicts!');*/
+console.log('✅ Unified polling implemented - no more timing conflicts!');
 /*console.log('app.js (robust locks + heartbeat) loaded');*/
 
 // BONUS : Fonction de nettoyage manuel pour débugger
@@ -586,11 +586,11 @@ function debugCleanExpiredLocks() {
   for (const [k, l] of Object.entries(locks)) {
     if (!l || l.until <= now) {
       delete locks[k];
-      /*console.log(`🧹 [DEBUG] Supprimé lock expiré ${k}`);*/
+      console.log(`🧹 [DEBUG] Supprimé lock expiré ${k}`);
     }
   }
   
   const after = Object.keys(locks).length;
-  /*console.log(`🧹 [DEBUG] Nettoyage: ${before} -> ${after} locks`);*/
+  console.log(`🧹 [DEBUG] Nettoyage: ${before} -> ${after} locks`);
   paintAll();
 }
