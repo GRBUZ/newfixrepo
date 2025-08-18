@@ -302,30 +302,39 @@ window.addEventListener('keydown', (e)=>{
 
 
 
-async function reserve(indices){
+async function reserve(indices) {
   const r = await fetch('/.netlify/functions/reserve', {
-    method:'POST',
-    headers:{'content-type':'application/json'},
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
   });
-  const res=await r.json();
-  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
 
-  // Ensure local locks reflect what we just reserved, with a full TTL
+  const res = await r.json();
+  if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP ' + r.status));
+
   const now = Date.now();
-  for (const i of (res.locked||[])){
-    locks[i] = { uid, until: now + 300000 };
+
+  // Locks que TU viens de réserver
+  const newLocalLocks = {};
+  for (const i of (res.locked || [])) {
+    newLocalLocks[i] = { uid, until: now + 300000 };
   }
-  // Merge incoming (others' locks) without dropping ours
-  locks = mergeLocksPreferLocal(locks, res.locks || {});
+
+  // ✅ Fusionne avec l'existant sans perdre les tiens
+  locks = mergeLocksPreferLocal(
+    { ...locks, ...newLocalLocks }, // anciens locks + les tiens à jour
+    res.locks || {}                 // ceux du serveur
+  );
+
   paintAll();
-  
-  // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
+
+  // Protège les tiens pendant 8s
   holdIncomingLocksUntil = Date.now() + 8000;
-  // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
   currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
+
   return res;
 }
+
 
 async function unlock(indices){
   console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
