@@ -491,11 +491,12 @@ let lastStatusCache = { sold: null, visible: null };
 
 async function loadStatus() {
   try {
-    const r = await fetchWithJWT('/.netlify/functions/status', { cache: 'no-store' });
+    const r = await fetch('/.netlify/functions/status', { cache: 'no-store' });
     const s = await r.json();
     if (!s || !s.ok) return;
 
     // 1) Màj des ventes
+    sold = s.sold || {};
     const newSold = s.sold || {};
 
     const incoming = s.locks || {};
