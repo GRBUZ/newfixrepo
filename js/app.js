@@ -210,6 +210,14 @@ function clearSelection(){
   for(const i of selected) grid.children[i].classList.remove('sel');
   selected.clear(); refreshTopbar();
 }
+function applySelection(newSet){
+  // retire les anciens
+  for (const idx of selected) if (!newSet.has(idx)) grid.children[idx].classList.remove('sel');
+  // ajoute les nouveaux
+  for (const idx of newSet) if (!selected.has(idx)) grid.children[idx].classList.add('sel');
+  selected = newSet;
+  refreshTopbar();
+}
 
 function selectRect(aIdx,bIdx){
   const [ar,ac]=idxToRowCol(aIdx), [br,bc]=idxToRowCol(bIdx);
@@ -217,9 +225,12 @@ function selectRect(aIdx,bIdx){
   blockedDuringDrag = false;
   for(let r=r0;r<=r1;r++){ for(let c=c0;c<=c1;c++){ const idx=rowColToIdx(r,c); if (isBlockedCell(idx)) { blockedDuringDrag = true; break; } } if (blockedDuringDrag) break; }
   if (blockedDuringDrag){ clearSelection(); showInvalidRect(r0,c0,r1,c1,900); return; }
-  hideInvalidRect(); clearSelection();
-  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){ const idx=rowColToIdx(r,c); selected.add(idx); }
-  for(const i of selected) grid.children[i].classList.add('sel');
+  // ... après le test blockedDuringDrag ...
+  const ns = new Set();
+  for (let r=r0; r<=r1; r++) for (let c=c0; c<=c1; c++) ns.add(rowColToIdx(r,c));
+  applySelection(ns);
+
+  hideInvalidRect();
   refreshTopbar();
 }
 
