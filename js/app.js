@@ -28,7 +28,38 @@ function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'
   // 1. UID génération plus robuste pour Edge
 const uid = (()=>{ 
     const k='iw_uid'; 
-    let v=localStorage.getItem(k); 
+    
+// === JWT Auth Setup ===
+let jwtToken = null;
+
+// Récupération du token JWT (exemple à adapter selon votre backend)
+async function fetchJwtToken() {
+  try {
+    const res = await fetch('/.netlify/functions/get-token');
+    const data = await res.json();
+    if (res.ok && data.token) {
+      jwtToken = data.token;
+      console.log('[JWT] Token reçu:', jwtToken);
+    } else {
+      console.error('[JWT] Erreur token:', data.error || res.statusText);
+    }
+  } catch (e) {
+    console.error('[JWT] Exception lors de la récupération du token', e);
+  }
+}
+
+// Appelle cette fonction au chargement
+fetchJwtToken();
+
+// Utilitaire pour ajouter l'en-tête Authorization
+function fetchWithJWT(url, options = {}) {
+  if (!options.headers) options.headers = {};
+  if (jwtToken) options.headers['Authorization'] = `Bearer ${jwtToken}`;
+  return fetch(url, options);
+}
+
+
+let v=localStorage.getItem(k); 
     if(!v){ 
         // Meilleure compatibilité Edge
         if (window.crypto && window.crypto.randomUUID) {
@@ -303,7 +334,7 @@ window.addEventListener('keydown', (e)=>{
 
 
 async function reserve(indices) {
-  const r = await fetch('/.netlify/functions/reserve', {
+  const r = await fetchWithJWT('/.netlify/functions/reserve', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
@@ -339,7 +370,7 @@ async function reserve(indices) {
 async function unlock(indices){
   console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
   
-  const r = await fetch('/.netlify/functions/unlock',{
+  const r = await fetchWithJWT('/.netlify/functions/unlock', {
     method:'POST', 
     headers:{'content-type':'application/json'},
     body: JSON.stringify({ uid, blocks: indices })
@@ -414,7 +445,7 @@ form.addEventListener('submit', async (e)=>{
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
     const blocks = currentLock.length ? currentLock.slice() : Array.from(selected);
-    const r = await fetch('/.netlify/functions/finalize', {
+    const r = await fetchWithJWT('/.netlify/functions/finalize', {
       method:'POST', headers:{'content-type':'application/json'},
       body: JSON.stringify({ uid, blocks, linkUrl, name, email })
     });
@@ -454,7 +485,7 @@ let lastStatusCache = { sold: null, visible: null };
 
 async function loadStatus() {
   try {
-    const r = await fetch('/.netlify/functions/status', { cache: 'no-store' });
+    const r = await fetchWithJWT('/.netlify/functions/status', { cache: 'no-store' });
     const s = await r.json();
     if (!s || !s.ok) return;
 
