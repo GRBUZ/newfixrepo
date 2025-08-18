@@ -53,6 +53,15 @@ let locks = {};
 let selected = new Set();
 let holdIncomingLocksUntil = 0;   // fenêtre pendant laquelle on NE TOUCHE PAS aux locks venant du serveur
 
+let CELL = { w:10, h:10 };
+function recalcCell(){
+  const c = grid.children[0];
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  CELL = { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
+}
+window.addEventListener('resize', recalcCell);
+recalcCell();
 
 // Heartbeat while modal open
 let currentLock = [];
@@ -124,9 +133,9 @@ invalidIcon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="
 invalidEl.appendChild(invalidIcon);
 grid.appendChild(invalidEl);
 
-function getCellSize(){ const cell=grid.children[0]; if(!cell) return {w:10,h:10}; const r=cell.getBoundingClientRect(); return { w:Math.max(1,Math.round(r.width)), h:Math.max(1,Math.round(r.height)) }; }
+
 function showInvalidRect(r0,c0,r1,c1, ttl=900){
-  const { w:CW, h:CH } = getCellSize();
+  const { w:CW, h:CH } = CELL;
   const left=c0*CW, top=r0*CH, w=(c1-c0+1)*CW, h=(r1-r0+1)*CH;
   Object.assign(invalidEl.style,{ left:left+'px', top:top+'px', width:w+'px', height:h+'px', display:'block' });
   const size = Math.max(16, Math.min(64, Math.floor(Math.min(w, h) * 0.7)));
@@ -162,7 +171,7 @@ function paintCell(idx){
   d.classList.toggle('sel', selected.has(idx));
   
   if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)){
-    const [r,c]=idxToRowCol(idx); const { w:CW, h:CH }=getCellSize();
+    const [r,c]=idxToRowCol(idx); const { w:CW, h:CH }=CELL;
     const offX=(c - s.rect.x)*CW, offY=(r - s.rect.y)*CH;
     d.style.backgroundImage=`url(${s.imageUrl})`;
     d.style.backgroundSize=`${s.rect.w*CW}px ${s.rect.h*CH}px`;
@@ -224,7 +233,7 @@ function toggleCell(idx){
 
 function idxFromClientXY(x,y){
   const rect=grid.getBoundingClientRect();
-  const { w:CW, h:CH } = getCellSize();
+  const { w:CW, h:CH } = CELL;
   const gx=Math.floor((x-rect.left)/CW), gy=Math.floor((y-rect.top)/CH);
   if (gx<0||gy<0||gx>=N||gy>=N) return -1;
   return gy*N + gx;
