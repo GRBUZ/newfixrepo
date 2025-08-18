@@ -345,17 +345,32 @@ async function unlock(indices){
     console.error('❌ [UNLOCK] Échec:', res.error || ('HTTP '+r.status));
     throw new Error(res.error || ('HTTP '+r.status));
   }
-  
-  // ✅ CORRECTION CRITIQUE : Mettre à jour les locks ET supprimer la protection
-  locks = res.locks || {}; 
+
+  // ✅ PATCH sécurisé : fusionne intelligemment les locks
+  const now = Date.now();
+  const newLocks = {};
+
+  // 1. Ajoute les locks renvoyés par le serveur (valides)
+  for (const [k, l] of Object.entries(res.locks || {})) {
+    if (l && l.until > now) newLocks[k] = l;
+  }
+
+  // 2. Conserve les locks LOCAUX encore valides NON mentionnés dans la réponse
+  for (const [k, l] of Object.entries(locks || {})) {
+    if (!(k in newLocks) && l && l.uid === uid && l.until > now) {
+      newLocks[k] = l;
+    }
+  }
+
+  locks = newLocks; 
   holdIncomingLocksUntil = 0; // ✅ Supprimer immédiatement la protection !
-  
+
   console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
-  console.log('🔄 [UNLOCK] Protection supprimée');
   
   paintAll(); 
   return res;
 }
+
 
 
 buyBtn.addEventListener('click', async ()=>{
