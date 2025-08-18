@@ -272,15 +272,16 @@ function closeModal(){
   stopHeartbeat(); // ← C'est suffisant, pas besoin de répéter
 }
 
-document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
-  // PRENDS un snapshot AVANT
+
+async function handleCancelAction(){
+  // Snapshot AVANT
   const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
 
-  // 🔒 Couper toute relock possible AVANT d’unlock
+  // 🔒 Empêcher relock
   currentLock = [];
   stopHeartbeat();
 
-  // Libère au serveur
+  // Libération serveur
   if (toRelease.length) {
     try { await unlock(toRelease); } catch {}
   }
@@ -288,25 +289,17 @@ document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('cli
   closeModal();
   clearSelection();
   setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
-}));
+}
 
-
-window.addEventListener('keydown', async (e)=>{
+document.querySelectorAll('[data-close]').forEach(el =>
+  el.addEventListener('click', handleCancelAction)
+);
+window.addEventListener('keydown', (e)=>{
   if(e.key==='Escape' && !modal.classList.contains('hidden')){
-    const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
-
-    currentLock = [];
-    stopHeartbeat();
-
-    if (toRelease.length) {
-      try { await unlock(toRelease); } catch {}
-    }
-
-    closeModal();
-    clearSelection();
-    setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
+    handleCancelAction();
   }
 });
+
 
 
 async function reserve(indices){
