@@ -1,3 +1,5 @@
+import jwt from 'jsonwebtoken';
+
 // netlify/functions/upload.mjs (v2, avec diagnostics)
 const STATE_PATH = process.env.STATE_PATH || "data/state.json";
 const GH_REPO    = process.env.GH_REPO;
@@ -86,6 +88,21 @@ async function ghPutBinary(path, buffer, message){
 }
 
 export default async (req) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.split(' ')[1];
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    return {
+      statusCode: 401,
+      body: JSON.stringify({ ok: false, error: 'Invalid or missing token' }),
+    };
+  }
+
+  // Le uid est maintenant disponible via decoded.uid
+  const uid = decoded.uid;
   try {
     if (req.method !== "POST") return bad(405, "METHOD_NOT_ALLOWED");
     if (!GH_REPO || !GH_TOKEN)  return bad(500, "GITHUB_CONFIG_MISSING", { GH_REPO, GH_BRANCH });
