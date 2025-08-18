@@ -52,10 +52,16 @@ async function fetchJwtToken() {
 fetchJwtToken();
 
 // Utilitaire pour ajouter l'en-tête Authorization
-function fetchWithJWT(url, options = {}) {
+/*function fetchWithJWT(url, options = {}) {
   if (!options.headers) options.headers = {};
   if (jwtToken) options.headers['Authorization'] = `Bearer ${jwtToken}`;
   return fetch(url, options);
+}*/
+async function fetchWithJWT(url, options = {}) {
+  const token = localStorage.getItem('jwtToken');
+  const headers = options.headers || {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
 }
 
 
