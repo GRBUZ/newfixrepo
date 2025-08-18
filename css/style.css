@@ -446,3 +446,16 @@ main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
   .masthead-strip{ margin: 0 10px; }
 }*/
 
+.masthead {
+  position: fixed;   /* colle le header en haut */
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1000;       /* reste au-dessus du reste */
+  background: #fff;    /* ou la couleur de ton fond d’origine */
+}
+
+/* décale le contenu principal pour qu’il ne soit pas masqué */
+body {
+  margin-top: /* hauteur réelle du header en px */;
+}
