@@ -1,12 +1,14 @@
-// Forbidden icon overlay — robust version
-// - Overlay appended AFTER cells to ensure it's on top
-// - Cell size computed from DOM (handles CSS changes)
-// - High z-index; ensure grid has position:relative
-// - No-holes selection logic retained
+// app.js — robust locks: local-wins merge + heartbeat during modal
+// Anti-flicker pour les locks d’autrui
+const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
+const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
+const othersHold = Object.create(null);    // idx -> expiresAt (timestamp)
+
 
 const N = 100;
 const TOTAL_PIXELS = 1_000_000;
 
+// DOM
 const grid = document.getElementById('grid');
 const buyBtn = document.getElementById('buyBtn');
 const priceLine = document.getElementById('priceLine');
@@ -21,121 +23,127 @@ const confirmBtn = document.getElementById('confirm');
 const modalStats = document.getElementById('modalStats');
 
 function formatInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-function formatMoney(n){ const [i,d]=n.toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
+function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
 
-const uid = (()=>{ const k='iw_uid'; let v=localStorage.getItem(k); if(!v){ v=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)); localStorage.setItem(k,v);} return v; })();
+  // 1. UID génération plus robuste pour Edge
+const uid = (()=>{ 
+    const k='iw_uid'; 
+    let v=localStorage.getItem(k); 
+    if(!v){ 
+        // Meilleure compatibilité Edge
+        if (window.crypto && window.crypto.randomUUID) {
+            v = crypto.randomUUID();
+        } else if (window.crypto && window.crypto.getRandomValues) {
+            // Fallback pour Edge anciennes versions
+            const arr = new Uint8Array(16);
+            crypto.getRandomValues(arr);
+            v = Array.from(arr, byte => byte.toString(16).padStart(2, '0')).join('');
+        } else {
+            // Fallback ultime
+            v = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        }
+        localStorage.setItem(k,v);
+    } 
+    window.uid=v; 
+    return v; 
+})();
 
-let sold = {};   // { idx: { name, linkUrl, ts, imageUrl?, rect?, regionId? } }
-let locks = {};  // { idx: { uid, until } }
+let sold = {};
+let locks = {};
 let selected = new Set();
+let holdIncomingLocksUntil = 0;   // fenêtre pendant laquelle on NE TOUCHE PAS aux locks venant du serveur
 
-// drag state
+let CELL = { w:10, h:10 };
+function recalcCell(){
+  const c = grid.children[0];
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  CELL = { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
+}
+window.addEventListener('resize', recalcCell);
+recalcCell();
+
+// Heartbeat while modal open
+let currentLock = [];
+let heartbeat = null;
+function startHeartbeat(){
+  stopHeartbeat();
+  heartbeat = setInterval(async ()=>{
+    if (!currentLock.length) return;
+    try { await reserve(currentLock); } catch {}
+  }, 4000); // 25s
+}
+function stopHeartbeat(){
+  if (heartbeat){ clearInterval(heartbeat); heartbeat=null; }
+}
+
+// Merge helper: keep our local locks (same uid) if longer
+function mergeLocksPreferLocal(local, incoming){
+  const now = Date.now();
+  const out = Object.create(null);
+
+  // 1) Mes locks à moi (uid === uid) : on garde s'ils sont encore valides
+  for (const [k, l] of Object.entries(local || {})) {
+    if (l && l.uid === uid && l.until > now) {
+      out[k] = { uid: l.uid, until: l.until };
+    }
+  }
+
+  // 2) Locks entrants (serveur) : vérité pour les autres + on note "vu à now"
+  for (const [k, l] of Object.entries(incoming || {})) {
+    if (l && l.until > now) {
+      out[k] = { uid: l.uid, until: l.until };
+      othersLastSeen[k] = now;
+    }
+  }
+
+  // 3) Si un lock d’autrui a "disparu" à ce poll, on le garde en grâce qq secondes
+  for (const [k, l] of Object.entries(local || {})) {
+    if (!out[k] && l && l.uid !== uid && l.until > now) {
+      const last = othersLastSeen[k] || 0;
+      if (now - last < OTHERS_GRACE_MS) {
+        out[k] = { uid: l.uid, until: l.until }; // on le maintient temporairement
+      } else {
+        delete othersLastSeen[k]; // grâce expirée : on laisse tomber
+      }
+    }
+  }
+
+  return out;
+}
+
+
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;
 
-// ====== Unified status refresh (sold + locks + regions) ======
-let __pollTimer = null;
-let __inflight  = false;
-let __lastFP    = { sold:'', locks:'', regions:'' };
-
-window.regions = window.regions || {};
-
-async function refreshStatusOnce(force=false){
-  if (__inflight) return;
-  __inflight = true;
-  try{
-    const r = await fetch('/.netlify/functions/status?ts=' + Date.now(), { cache: 'no-store' });
-    const data = await r.json();
-
-    const soldJSON    = JSON.stringify(data.sold    || {});
-    const locksJSON   = JSON.stringify(data.locks   || {});
-    const regionsJSON = JSON.stringify(data.regions || {});
-
-    const changedSold    = force || soldJSON    !== __lastFP.sold;
-    const changedLocks   = force || locksJSON   !== __lastFP.locks;
-    const changedRegions = force || regionsJSON !== __lastFP.regions;
-
-    __lastFP = { sold: soldJSON, locks: locksJSON, regions: regionsJSON };
-
-    if (changedSold)  sold  = data.sold  || {};
-    if (changedLocks) locks = data.locks || {};
-    if (changedRegions) window.regions = data.regions || {};
-
-    if (changedSold || changedLocks) paintAll();
-    if (changedRegions && typeof window.renderRegions === 'function') window.renderRegions();
-  } catch(e){ /* silent */ }
-  finally { __inflight = false; }
-}
-
-function startStatusPoll(periodMs = 2500){
-  if (__pollTimer) clearInterval(__pollTimer);
-  __pollTimer = setInterval(() => refreshStatusOnce(false), periodMs);
-}
-
-// Back-compat pour d'autres appels
-window.refreshStatus = () => refreshStatusOnce(true);
-
-// ---------- Build grid ----------
 (function build(){
   const frag=document.createDocumentFragment();
   for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='cell'; d.dataset.idx=i; frag.appendChild(d); }
   grid.appendChild(frag);
   const cs = getComputedStyle(grid);
   if (cs.position === 'static') grid.style.position = 'relative';
-  // paint initial
-  paintAll();
-  // boot unifié
-  (async function bootStatus(){ await refreshStatusOnce(true); startStatusPoll(2500); })();
 })();
 
-// ---------- Overlay (added AFTER cells so it's on top) ----------
 const invalidEl = document.createElement('div');
 invalidEl.id = 'invalidRect';
-Object.assign(invalidEl.style, {
-  position: 'absolute',
-  border: '2px solid #ef4444',
-  background: 'rgba(239,68,68,0.08)',
-  pointerEvents: 'none',
-  display: 'none',
-  zIndex: '999'
-});
+Object.assign(invalidEl.style, { position:'absolute', border:'2px solid #ef4444', background:'rgba(239,68,68,0.08)', pointerEvents:'none', display:'none', zIndex:'999' });
 const invalidIcon = document.createElement('div');
-Object.assign(invalidIcon.style, {
-  position: 'absolute',
-  left: '50%',
-  top: '50%',
-  transform: 'translate(-50%, -50%)',
-  pointerEvents: 'none',
-  zIndex: '1000'
-});
-invalidIcon.innerHTML = `
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle>
-    <circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" stroke-width="2"></circle>
-    <line x1="7" y1="17" x2="17" y2="7" stroke="#ef4444" stroke-width="2" stroke-linecap="round"></line>
-  </svg>
-`;
+Object.assign(invalidIcon.style, { position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none', zIndex:'1000' });
+invalidIcon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.95)"></circle><circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" stroke-width="2"></circle><line x1="7" y1="17" x2="17" y2="7" stroke="#ef4444" stroke-width="2" stroke-linecap="round"></line></svg>`;
 invalidEl.appendChild(invalidIcon);
 grid.appendChild(invalidEl);
 
-function getCellSize(){
-  const cell = grid.children[0];
-  if (!cell) return { w: 10, h: 10 };
-  const r = cell.getBoundingClientRect();
-  return { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
-}
+
 function showInvalidRect(r0,c0,r1,c1, ttl=900){
-  const { w:CW, h:CH } = getCellSize();
-  const left = c0*CW, top = r0*CH;
-  const w = (c1-c0+1)*CW, h = (r1-r0+1)*CH;
-  Object.assign(invalidEl.style, { left:left+'px', top:top+'px', width:w+'px', height:h+'px', display:'block' });
+  const { w:CW, h:CH } = CELL;
+  const left=c0*CW, top=r0*CH, w=(c1-c0+1)*CW, h=(r1-r0+1)*CH;
+  Object.assign(invalidEl.style,{ left:left+'px', top:top+'px', width:w+'px', height:h+'px', display:'block' });
   const size = Math.max(16, Math.min(64, Math.floor(Math.min(w, h) * 0.7)));
-  const svg = invalidIcon.querySelector('svg'); svg.style.width = size+'px'; svg.style.height = size+'px';
-  if (ttl>0){ setTimeout(()=>{ invalidEl.style.display='none'; }, ttl); }
+  const svg = invalidIcon.querySelector('svg'); svg.style.width=size+'px'; svg.style.height=size+'px';
+  if (ttl>0) setTimeout(()=>{ invalidEl.style.display='none'; }, ttl);
 }
 function hideInvalidRect(){ invalidEl.style.display='none'; }
 
-// ---------- Helpers ----------
 function idxToRowCol(idx){ return [Math.floor(idx/N), idx%N]; }
 function rowColToIdx(r,c){ return r*N + c; }
 function isBlockedCell(idx){
@@ -146,31 +154,37 @@ function isBlockedCell(idx){
 
 function paintCell(idx){
   const d=grid.children[idx]; const s=sold[idx]; const l=locks[idx];
+  // DEBUG TEMPORAIRE pour quelques cellules
+  if (idx < 5 || (l && l.until > Date.now())) {
+    console.log(`🎨 [paintCell] idx=${idx}:`, {
+      sold: !!s,
+      lock: l ? {uid: l.uid, until: new Date(l.until).toLocaleTimeString()} : null,
+      isReserved: !!(l && l.until > Date.now()),
+      isOtherUser: !!(l && l.until > Date.now() && l.uid !== uid)
+    });
+  }
+  
   const reserved = l && l.until > Date.now() && !s;
   const reservedByOther = reserved && l.uid !== uid;
-
   d.classList.toggle('sold', !!s);
   d.classList.toggle('pending', !!reservedByOther);
   d.classList.toggle('sel', selected.has(idx));
-
-  if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)) {
-    const [r,c]=idxToRowCol(idx);
-    const { w:CW, h:CH } = getCellSize();
+  
+  if (s && s.imageUrl && s.rect && Number.isInteger(s.rect.x)){
+    const [r,c]=idxToRowCol(idx); const { w:CW, h:CH }=CELL;
     const offX=(c - s.rect.x)*CW, offY=(r - s.rect.y)*CH;
-    d.style.backgroundImage = `url(${s.imageUrl})`;
-    d.style.backgroundSize = `${s.rect.w*CW}px ${s.rect.h*CH}px`;
-    d.style.backgroundPosition = `-${offX}px -${offY}px`;
+    d.style.backgroundImage=`url(${s.imageUrl})`;
+    d.style.backgroundSize=`${s.rect.w*CW}px ${s.rect.h*CH}px`;
+    d.style.backgroundPosition=`-${offX}px -${offY}px`;
   } else {
     d.style.backgroundImage=''; d.style.backgroundSize=''; d.style.backgroundPosition='';
   }
-
   if (s){
     d.title=(s.name?s.name+' · ':'')+(s.linkUrl||'');
     if(!d.firstChild){ const a=document.createElement('a'); a.className='region-link'; a.target='_blank'; d.appendChild(a); }
     d.firstChild.href = s.linkUrl || '#';
   } else {
-    d.title='';
-    if (d.firstChild) d.firstChild.remove();
+    d.title=''; if (d.firstChild) d.firstChild.remove();
   }
 }
 function paintAll(){ for(let i=0;i<N*N;i++) paintCell(i); refreshTopbar(); }
@@ -179,52 +193,44 @@ function refreshTopbar(){
   const blocksSold=Object.keys(sold).length, pixelsSold=blocksSold*100;
   const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
   priceLine.textContent = `1 pixel = ${formatMoney(currentPrice)}`;
-  pixelsLeftEl.textContent = `1,000,000 pixels`; // constant view
+  //const left = TOTAL_PIXELS - pixelsSold;
+  //pixelsLeftEl.textContent = `${formatInt(left)} pixels left`;
+  // Afficher toujours le total fixe "1,000,000 pixels"
+  pixelsLeftEl.textContent = `${TOTAL_PIXELS.toLocaleString('en-US')} pixels`;
 
   const selectedPixels = selected.size * 100;
   if (selectedPixels > 0) {
     const total = selectedPixels * currentPrice;
     buyBtn.textContent = `Buy Pixels — ${formatInt(selectedPixels)} px (${formatMoney(total)})`;
     buyBtn.disabled = false;
-  } else {
-    buyBtn.textContent = `Buy Pixels`;
-    buyBtn.disabled = true;
-  }
+  } else { buyBtn.textContent = `Buy Pixels`; buyBtn.disabled = true; }
 }
 
 function clearSelection(){
   for(const i of selected) grid.children[i].classList.remove('sel');
-  selected.clear();
+  selected.clear(); refreshTopbar();
+}
+function applySelection(newSet){
+  // retire les anciens
+  for (const idx of selected) if (!newSet.has(idx)) grid.children[idx].classList.remove('sel');
+  // ajoute les nouveaux
+  for (const idx of newSet) if (!selected.has(idx)) grid.children[idx].classList.add('sel');
+  selected = newSet;
   refreshTopbar();
 }
 
 function selectRect(aIdx,bIdx){
   const [ar,ac]=idxToRowCol(aIdx), [br,bc]=idxToRowCol(bIdx);
   const r0=Math.min(ar,br), r1=Math.max(ar,br), c0=Math.min(ac,bc), c1=Math.max(ac,bc);
-
-  // detect blocked cells
   blockedDuringDrag = false;
-  for(let r=r0;r<=r1;r++){
-    for(let c=c0;c<=c1;c++){
-      const idx=rowColToIdx(r,c);
-      if (isBlockedCell(idx)) { blockedDuringDrag = true; break; }
-    }
-    if (blockedDuringDrag) break;
-  }
-
-  if (blockedDuringDrag){
-    clearSelection();
-    showInvalidRect(r0,c0,r1,c1, 900);
-    return;
-  }
+  for(let r=r0;r<=r1;r++){ for(let c=c0;c<=c1;c++){ const idx=rowColToIdx(r,c); if (isBlockedCell(idx)) { blockedDuringDrag = true; break; } } if (blockedDuringDrag) break; }
+  if (blockedDuringDrag){ clearSelection(); showInvalidRect(r0,c0,r1,c1,900); return; }
+  // ... après le test blockedDuringDrag ...
+  const ns = new Set();
+  for (let r=r0; r<=r1; r++) for (let c=c0; c<=c1; c++) ns.add(rowColToIdx(r,c));
+  applySelection(ns);
 
   hideInvalidRect();
-  clearSelection();
-  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){
-    const idx=rowColToIdx(r,c);
-    selected.add(idx);
-  }
-  for(const i of selected) grid.children[i].classList.add('sel');
   refreshTopbar();
 }
 
@@ -238,14 +244,12 @@ function toggleCell(idx){
 
 function idxFromClientXY(x,y){
   const rect=grid.getBoundingClientRect();
-  // compute cell size from DOM
-  const { w:CW, h:CH } = getCellSize();
+  const { w:CW, h:CH } = CELL;
   const gx=Math.floor((x-rect.left)/CW), gy=Math.floor((y-rect.top)/CH);
   if (gx<0||gy<0||gx>=N||gy>=N) return -1;
   return gy*N + gx;
 }
 
-// Drag handlers + click suppression
 grid.addEventListener('mousedown',(e)=>{
   const idx=idxFromClientXY(e.clientX,e.clientY); if(idx<0) return;
   isDragging=true; dragStartIdx=idx; lastDragIdx=idx; movedDuringDrag=false; suppressNextClick=false;
@@ -260,9 +264,7 @@ window.addEventListener('mousemove',(e)=>{
 window.addEventListener('mouseup',()=>{
   if (isDragging){ suppressNextClick=movedDuringDrag; }
   isDragging=false; dragStartIdx=-1; movedDuringDrag=false; lastDragIdx=-1;
-  // overlay auto-hides via TTL
 });
-
 grid.addEventListener('click',(e)=>{
   if(suppressNextClick){ suppressNextClick=false; return; }
   if(isDragging) return;
@@ -277,21 +279,111 @@ function openModal(){
   const selectedPixels = selected.size * 100;
   const total = selectedPixels * currentPrice;
   modalStats.textContent = `${formatInt(selectedPixels)} px — ${formatMoney(total)}`;
+  
+  // ✅ UN SEUL heartbeat !
+  if (currentLock.length) {
+    startHeartbeat();
+    console.log('[MODAL] Started heartbeat for', currentLock.length, 'blocks');
+  }
 }
-function closeModal(){ modal.classList.add('hidden'); }
+
+function closeModal(){ 
+  modal.classList.add('hidden'); 
+  stopHeartbeat(); // ← C'est suffisant, pas besoin de répéter
+}
 
 document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
-  if (selected.size){ try { await unlock(Array.from(selected)); } catch {} }
-  await window.refreshStatus();
-  closeModal(); clearSelection();
+  // PRENDS un snapshot AVANT
+  const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
+
+  // 🔒 Couper toute relock possible AVANT d’unlock
+  currentLock = [];
+  stopHeartbeat();
+
+  // Libère au serveur
+  if (toRelease.length) {
+    try { await unlock(toRelease); } catch {}
+  }
+
+  closeModal();
+  clearSelection();
+  setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
 }));
+
+
 window.addEventListener('keydown', async (e)=>{
-  if(e.key==='Escape'){
-    if (!modal.classList.contains('hidden') && selected.size){ try { await unlock(Array.from(selected)); } catch {} }
-    await window.refreshStatus();
-    closeModal(); clearSelection();
+  if(e.key==='Escape' && !modal.classList.contains('hidden')){
+    const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
+
+    currentLock = [];
+    stopHeartbeat();
+
+    if (toRelease.length) {
+      try { await unlock(toRelease); } catch {}
+    }
+
+    closeModal();
+    clearSelection();
+    setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
   }
 });
+
+
+async function reserve(indices){
+  const r = await fetch('/.netlify/functions/reserve', {
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
+  });
+  const res=await r.json();
+  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
+
+  // Ensure local locks reflect what we just reserved, with a full TTL
+  const now = Date.now();
+  for (const i of (res.locked||[])){
+    locks[i] = { uid, until: now + 300000 };
+  }
+  // Merge incoming (others' locks) without dropping ours
+  locks = mergeLocksPreferLocal(locks, res.locks || {});
+  paintAll();
+  
+  // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
+  holdIncomingLocksUntil = Date.now() + 8000;
+  // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
+  currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
+  return res;
+}
+
+async function unlock(indices){
+  console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
+  
+  const r = await fetch('/.netlify/functions/unlock',{
+    method:'POST', 
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify({ uid, blocks: indices })
+  });
+  
+  console.log('🔓 [UNLOCK] Réponse HTTP:', r.status, r.ok);
+  
+  const res = await r.json(); 
+  console.log('🔓 [UNLOCK] Réponse serveur:', res);
+  
+  if(!r.ok || !res.ok) {
+    console.error('❌ [UNLOCK] Échec:', res.error || ('HTTP '+r.status));
+    throw new Error(res.error || ('HTTP '+r.status));
+  }
+  
+  // ✅ CORRECTION CRITIQUE : Mettre à jour les locks ET supprimer la protection
+  locks = res.locks || {}; 
+  holdIncomingLocksUntil = 0; // ✅ Supprimer immédiatement la protection !
+  
+  console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
+  console.log('🔄 [UNLOCK] Protection supprimée');
+  
+  paintAll(); 
+  return res;
+}
+
 
 buyBtn.addEventListener('click', async ()=>{
   if(!selected.size) return;
@@ -304,9 +396,10 @@ buyBtn.addEventListener('click', async ()=>{
       clearSelection(); paintAll();
       return;
     }
+    // remember our current lock and start heartbeat in modal
+    currentLock = got.locked.slice();
     clearSelection();
     for(const i of got.locked){ selected.add(i); grid.children[i].classList.add('sel'); }
-    await window.refreshStatus(); // immediate status refresh after reservation
     openModal();
   }catch(e){
     alert('Reservation failed: ' + (e?.message || e));
@@ -315,13 +408,15 @@ buyBtn.addEventListener('click', async ()=>{
 
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const linkUrl = linkInput.value.trim();
-  const name    = nameInput.value.trim();
-  const email   = emailInput.value.trim();
+  let linkUrl = linkInput.value.trim();
+  const name  = nameInput.value.trim();
+  const email = emailInput.value.trim();
   if(!linkUrl || !name || !email){ return; }
+  if (!/^https?:\/\//i.test(linkUrl)) linkUrl = 'https://' + linkUrl;
+
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
-    const blocks = Array.from(selected);
+    const blocks = currentLock.length ? currentLock.slice() : Array.from(selected);
     const r = await fetch('/.netlify/functions/finalize', {
       method:'POST', headers:{'content-type':'application/json'},
       body: JSON.stringify({ uid, blocks, linkUrl, name, email })
@@ -336,7 +431,7 @@ form.addEventListener('submit', async (e)=>{
     if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP '+r.status));
     sold = res.soldMap || sold;
     try{ await unlock(blocks); }catch{}
-    await window.refreshStatus();
+    currentLock = []; stopHeartbeat();
     clearSelection(); paintAll(); closeModal();
   }catch(err){
     alert('Finalize failed: '+(err?.message||err));
@@ -355,83 +450,118 @@ function rectFromIndices(arr){
   return { r0,c0,r1,c1 };
 }
 
-async function reserve(indices){
-   const r=await fetch('/.netlify/functions/reserve',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-     body: JSON.stringify({ uid, blocks: indices, ttl: 180000 })
-   });
-   const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-   locks = res.locks || locks; paintAll(); return res;
-}
-async function unlock(indices){
-  const r=await fetch('/.netlify/functions/unlock',{ method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ uid, blocks: indices }) });
-  const res=await r.json(); if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
-  locks = res.locks || locks; paintAll(); return res;
-}
+// Remplacez le début de loadStatus() par ceci pour voir la réponse brute :
 
-// Debug marker to verify correct file is loaded
-window.__hasForbiddenIconOverlay = true;
-console.log('app.js: unified polling patch loaded');
+// CORRECTION CRITIQUE : Nettoyer les locks expirés dans loadStatus
+async function loadStatus(){
+  try{
+    const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
+    const s = await r.json();
+    if (!s || !s.ok) return;
 
-function getRegionForIndex(idx){
-  const info = sold[idx];
-  if (!info) return null;
-  const reg = info.regionId && regions ? regions[info.regionId] : null;
-  if (reg && reg.rect && (reg.imageUrl || reg.imageUrl === "")) return { info, region: reg };
-  // Back-compat legacy
-  const legacyRect = info.rect, legacyImage = info.imageUrl;
-  if (legacyRect && legacyImage !== undefined) {
-    return { info, region: { imageUrl: legacyImage, rect: legacyRect } };
-  }
-  return { info, region: null };
-}
+    // 1) Màj des ventes
+    sold = s.sold || {};
 
-function renderAllRegionsOnce(){
-  if (!regions) return;
-  const seen = new Set();
-  for (const [idxStr, s] of Object.entries(sold)){
-    const rid = s.regionId;
-    if (!rid || seen.has(rid)) continue;
-    const reg = regions[rid];
-    if (!reg || !reg.rect) continue;
-    if (typeof window.drawRegionOverlay === 'function'){
-      window.drawRegionOverlay(reg, rid);
+    const incoming = s.locks || {};
+    const now = Date.now();
+
+    // 2) Renouvelle la "dernière vue" pour les locks d'AUTRUI présents dans la réponse
+    for (const [k, l] of Object.entries(incoming)) {
+      if (!l) continue;
+      if (l.uid !== uid && l.until > now) {
+        othersHold[k] = now + OTHERS_GRACE_MS;  // on les gardera au moins jusque-là
+      }
     }
-    seen.add(rid);
-  }
+
+    // 3) Purge des holds expirés (pas vus depuis > OTHERS_GRACE_MS)
+    for (const [k, exp] of Object.entries(othersHold)) {
+      if (exp <= now) delete othersHold[k];
+    }
+
+    // 4) Construit la carte de locks "visibles"
+    const visible = Object.create(null);
+
+    // a) base = locks renvoyés par le serveur (si encore valides)
+    for (const [k, l] of Object.entries(incoming)) {
+      if (l && l.until > now) visible[k] = { uid: l.uid, until: l.until };
+    }
+
+    // b) ajoute les holds (locks d'autrui "aperçus récemment") absents du snapshot courant
+    for (const [k, exp] of Object.entries(othersHold)) {
+      if (!visible[k]) visible[k] = { uid: 'other', until: exp };
+    }
+
+    // c) par-dessus, impose MES locks locaux s'ils sont plus longs/encore valides
+    for (const [k, l] of Object.entries(locks || {})) {
+      if (l && l.uid === uid && l.until > now) {
+        const cur = visible[k];
+        if (!cur || cur.uid !== uid || l.until > (cur.until || 0)) {
+          visible[k] = { uid: l.uid, until: l.until };
+        }
+      }
+    }
+
+    // 5) remplace la carte active et repeins
+    locks = visible;
+    paintAll();
+  } catch {}
 }
-// Example hook
-window.renderAllRegionsOnce = renderAllRegionsOnce;
 
-// ---- Render regions (one overlay per region) ----
+(async function init(){ 
+  await loadStatus(); paintAll(); 
+  /*setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); */
+  setInterval(async()=>{ 
+  console.log('⏰ [POLLING PRINCIPAL] Début cycle');
+  await loadStatus(); 
+  paintAll(); 
+  console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);
+}, 2500);
+
+}
+
+)();
+
+window.__regionsPoll && clearInterval(window.__regionsPoll);
+window.__regionsPoll = setInterval(async () => {
+  try {
+    console.log('🌍 [REGIONS] Début polling regions...');
+    const res = await fetch('/.netlify/functions/status?ts=' + Date.now());
+    const data = await res.json();
+    
+    // SEULEMENT regions et sold, PAS de locks !
+    window.sold = data.sold || {};
+    window.regions = data.regions || {};
+    
+    console.log('🌍 [REGIONS] Mise à jour:', {
+      regions: Object.keys(window.regions).length,
+      sold: Object.keys(window.sold).length
+    });
+    
+    if (typeof window.renderRegions === 'function') window.renderRegions();
+    console.log('🌍 [REGIONS] Terminé');
+  } catch (e) { 
+    console.warn('❌ [REGIONS] Erreur:', e);
+  }
+}, 15000);
+
+// Regions overlay (kept)
+window.regions = window.regions || {};
 function renderRegions() {
-  const grid = document.getElementById('grid');
-  if (!grid) return;
-
-  // Nettoyer les overlays précédents
-  grid.querySelectorAll('.region-overlay').forEach(n => n.remove());
-
-  const firstCell = grid.querySelector('.cell');
-  const size = firstCell ? firstCell.offsetWidth : 10; // cellule (incl. bordure)
-
-  // Map regionId -> linkUrl (on prend le 1er bloc vendu qui a ce regionId)
+  const gridEl = document.getElementById('grid');
+  if (!gridEl) return;
+  gridEl.querySelectorAll('.region-overlay').forEach(n => n.remove());
+  const firstCell = gridEl.querySelector('.cell');
+  const size = firstCell ? firstCell.offsetWidth : 10;
   const regionLink = {};
   for (const [idx, s] of Object.entries(window.sold || {})) {
-    if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) {
-      regionLink[s.regionId] = s.linkUrl;
-    }
+    if (s && s.regionId && !regionLink[s.regionId] && s.linkUrl) regionLink[s.regionId] = s.linkUrl;
   }
-
-  // Dessiner 1 overlay par région
   for (const [rid, reg] of Object.entries(window.regions || {})) {
     if (!reg || !reg.rect || !reg.imageUrl) continue;
-
     const { x, y, w, h } = reg.rect;
-    const idxTL = y * 100 + x; // top-left block index (N=100)
-    const tl = grid.querySelector(`.cell[data-idx="${idxTL}"]`);
+    const idxTL = y * 100 + x;
+    const tl = gridEl.querySelector(`.cell[data-idx="${idxTL}"]`);
     if (!tl) continue;
-
     const a = document.createElement('a');
     a.className = 'region-overlay';
     if (regionLink[rid]) { a.href = regionLink[rid]; a.target = '_blank'; a.rel = 'noopener nofollow'; }
@@ -447,98 +577,40 @@ function renderRegions() {
       backgroundRepeat: 'no-repeat',
       zIndex: 999
     });
-    grid.appendChild(a);
+    gridEl.appendChild(a);
   }
-  // S’assurer que la grille est au-dessus du header
-  grid.style.position = 'relative';
-  grid.style.zIndex = 2;
+  gridEl.style.position = 'relative';
+  gridEl.style.zIndex = 2;
 }
 window.renderRegions = renderRegions;
 
-/* =====================
-   Upload + link imageUrl patch (kept; uses window.refreshStatus if present)
-   ===================== */
-(function IW_UploadLink_Patch(){
-  const grid        = document.getElementById('grid');
-  const modal       = document.getElementById('modal');
-  const form        = document.getElementById('form');
-  const confirmBtn  = document.getElementById('confirm');
-  const cancelBtn   = document.getElementById('cancel');
-  const nameInput   = document.getElementById('name');
-  const linkInput   = document.getElementById('link');
-  const emailInput  = document.getElementById('email');
-  const fileInput   = document.getElementById('image');  // <input type="file" id="image">
-
-  if (!grid || !form || !confirmBtn) {
-    console.warn('[IW patch] required elements not found, skipping init.');
-    return;
+// Initial regions fetch + periodic refresh (15s)
+(async function regionsBootOnce(){
+  try {
+    // Utilise la même fonction que le polling principal
+    await loadStatus();
+    paintAll(); // S'assurer que tout est rendu
+    console.log('[regions] initial load via loadStatus()');
+  } catch (e) { 
+    console.warn('[regions] initial load failed', e); 
   }
-
-  function normalizeUrl(u){
-    u = String(u||'').trim();
-    if (!u) return '';
-    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-    return u;
-  }
-
-  function getSelectedIndices(){
-    return Array.from(document.querySelectorAll('.cell.sel')).map(el => +el.dataset.idx);
-  }
-
-  async function doFinalizeAndUpload(){
-    const name    = (nameInput && nameInput.value || '').trim();
-    const linkUrl = normalizeUrl(linkInput && linkInput.value);
-    const email   = (emailInput && emailInput.value || '').trim();
-    const blocks  = getSelectedIndices();
-
-    if (!blocks.length) { alert('Please select at least one block.'); return; }
-    if (!name || !linkUrl) { alert('Name and Profile URL are required.'); return; }
-
-    confirmBtn.disabled = true;
-
-    const fRes = await fetch('/.netlify/functions/finalize', {
-      method:'POST',
-      headers:{ 'content-type':'application/json' },
-      body: JSON.stringify({ uid, name, linkUrl, blocks })
-    });
-    const out = await fRes.json();
-    if (!out.ok) { alert(out.error || 'Finalize failed'); confirmBtn.disabled=false; return; }
-
-    try {
-      const file = fileInput && fileInput.files && fileInput.files[0];
-      if (file) {
-        if (!file.type.startsWith('image/')) throw new Error('Please upload an image file.');
-        if (file.size > 5*1024*1024) throw new Error('Max 5 MB.');
-        const fd = new FormData();
-        fd.append('file', file, file.name);
-        fd.append('regionId', out.regionId);
-        const upRes = await fetch('/.netlify/functions/upload', { method:'POST', body: fd });
-        const up = await upRes.json();
-        if (!up.ok) throw new Error(up.error || 'UPLOAD_FAILED');
-        console.log('[upload] image linked →', up.imageUrl);
-      } else {
-        console.log('[upload] no file provided — skipping imageUrl');
-      }
-    } catch (e) {
-      console.warn('[upload] failed:', e);
-    }
-
-    await window.refreshStatus().catch(()=>{});
-    if (modal && modal.classList) modal.classList.add('hidden');
-    confirmBtn.disabled = false;
-  }
-
-  if (confirmBtn && !confirmBtn.__iwBound){
-    confirmBtn.addEventListener('click', (ev) => { ev.preventDefault(); doFinalizeAndUpload(); });
-    confirmBtn.__iwBound = true;
-  }
-  if (cancelBtn && !cancelBtn.__iwBound){
-    cancelBtn.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      if (modal && modal.classList) modal.classList.add('hidden');
-    });
-    cancelBtn.__iwBound = true;
-  }
-
-  window.refreshStatus().catch(()=>{});
 })();
+console.log('✅ Unified polling implemented - no more timing conflicts!');
+/*console.log('app.js (robust locks + heartbeat) loaded');*/
+
+// BONUS : Fonction de nettoyage manuel pour débugger
+function debugCleanExpiredLocks() {
+  const now = Date.now();
+  const before = Object.keys(locks).length;
+  
+  for (const [k, l] of Object.entries(locks)) {
+    if (!l || l.until <= now) {
+      delete locks[k];
+      console.log(`🧹 [DEBUG] Supprimé lock expiré ${k}`);
+    }
+  }
+  
+  const after = Object.keys(locks).length;
+  console.log(`🧹 [DEBUG] Nettoyage: ${before} -> ${after} locks`);
+  paintAll();
+}

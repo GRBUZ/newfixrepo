@@ -446,25 +446,4 @@ main{ padding-top: 20px; }  /* ajuste 12–28px selon ton recouvrement */
   .masthead-strip{ margin: 0 10px; }
 }*/
 
-/* 1. Le strip devient fixe */
-.masthead-strip {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  z-index: 1000;
-}
 
-/* 2. Les boutons aussi s’ils sont dans la même couche */
-.masthead-actions {
-  position: fixed;
-  top: /* hauteur du strip + 8px */;
-  right: 1rem;
-  z-index: 1001;
-}
-
-/* 3. On pousse la grille (et tout le reste) vers le bas
-      pour qu’elle ne soit pas cachée */
-main {
-  padding-top: /* hauteur réelle du strip */;
-}
