@@ -7369,32 +7369,7 @@
       "regionId": "r_med2dt87_m6t9"
     }
   },
-  "locks": {
-    "1460": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755511441023
-    },
-    "1461": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755511441023
-    },
-    "1462": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755511441023
-    },
-    "1560": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755511441023
-    },
-    "1561": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755511441023
-    },
-    "1562": {
-      "uid": "e764e57f-bb8b-4a04-bfef-56f699196ca2",
-      "until": 1755511441023
-    }
-  },
+  "locks": {},
   "regions": {
     "r_meb9lgam_ka82": {
       "imageUrl": "https://raw.githubusercontent.com/GRBUZ/newfixrepo/main/assets/images/testimage.jpg",
