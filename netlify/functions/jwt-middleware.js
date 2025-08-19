@@ -1,5 +1,5 @@
 // jwt-middleware.js
-const { verifyJWT } = require('./auth-utils.js');
+const { verifyJWT } = require('../../js/auth-utils.js');
 
 // Middleware pour vérifier l'authentification JWT
 function requireAuth(handler) {
