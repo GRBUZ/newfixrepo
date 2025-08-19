@@ -88,7 +88,7 @@ import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
 
     // Re-reserve just before finalize (if backend supports it), using the SAME uid
     try{
-      const rsv=await fetch('/.netlify/functions/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks,ttl:180000})});
+      const rsv=await fetchWithJWT('/.netlify/functions/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks,ttl:180000})});
       const jr=await rsv.json();
       if(!jr.ok){
         await window.refreshStatus().catch(()=>{});
