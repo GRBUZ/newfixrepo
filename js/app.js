@@ -1,11 +1,11 @@
-// app.js — robust locks: local-wins merge + heartbeat during modal
-import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
+// app.js – robust locks: local-wins merge + heartbeat during modal + JWT auth
+// Les utilitaires d'authentification sont chargés depuis auth-utils.js (script global)
+// Fonctions disponibles : window.fetchWithJWT, window.authUtils.getUIDFromToken
 
-// Anti-flicker pour les locks d’autrui
+// Anti-flicker pour les locks d'autrui
 const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
-const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
+const OTHERS_GRACE_MS = 5000;              // garde un lock d'autrui jusqu'à 5s s'il "disparaît" ponctuellement
 const othersHold = Object.create(null);    // idx -> expiresAt (timestamp)
-
 
 const N = 100;
 const TOTAL_PIXELS = 1_000_000;
@@ -27,29 +27,43 @@ const modalStats = document.getElementById('modalStats');
 function formatInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
 
-  // 1. UID génération plus robuste pour Edge
-const uid = (()=>{ 
-    const k='iw_uid'; 
+// UID sécurisé via JWT
+let uid = null;
 
-let v=localStorage.getItem(k); 
-    if(!v){ 
-        // Meilleure compatibilité Edge
-        if (window.crypto && window.crypto.randomUUID) {
-            v = crypto.randomUUID();
-        } else if (window.crypto && window.crypto.getRandomValues) {
-            // Fallback pour Edge anciennes versions
-            const arr = new Uint8Array(16);
-            crypto.getRandomValues(arr);
-            v = Array.from(arr, byte => byte.toString(16).padStart(2, '0')).join('');
-        } else {
-            // Fallback ultime
-            v = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        }
-        localStorage.setItem(k,v);
-    } 
-    window.uid=v; 
-    return v; 
-})();
+// Initialisation asynchrone de l'UID
+async function initUID() {
+  try {
+    // Vérifier que les utilitaires d'auth sont chargés
+    if (!window.authUtils) {
+      throw new Error('Auth utils non chargés');
+    }
+    
+    // Essayer de récupérer l'UID depuis le token JWT existant
+    uid = window.authUtils.getUIDFromToken();
+    
+    if (!uid) {
+      // Si pas de token valide, en créer un nouveau via une requête test
+      await window.fetchWithJWT('/.netlify/functions/status');
+      uid = window.authUtils.getUIDFromToken();
+    }
+    
+    if (!uid) {
+      throw new Error('Impossible de récupérer l\'UID');
+    }
+    
+    window.uid = uid;
+    console.log('✅ UID sécurisé initialisé:', uid.slice(0, 8) + '...');
+    
+  } catch (error) {
+    console.error('❌ Erreur initialisation UID:', error);
+    // Fallback vers l'ancien système en cas de problème
+    uid = localStorage.getItem('iw_uid_fallback') || 
+          Date.now().toString(36) + Math.random().toString(36).slice(2);
+    localStorage.setItem('iw_uid_fallback', uid);
+    window.uid = uid;
+    console.log('⚠️ Utilisation UID fallback:', uid.slice(0, 8) + '...');
+  }
+}
 
 let sold = {};
 let locks = {};
@@ -91,7 +105,7 @@ function mergeLocksPreferLocal(local, incoming){
     }
   }
 
-  // 3) Si un lock d’autrui a "disparu" à ce poll, on le garde en grâce qq secondes
+  // 3) Si un lock d'autrui a "disparu" à ce poll, on le garde en grâce qq secondes
   for (const [k, l] of Object.entries(local || {})) {
     if (!out[k] && l && l.uid !== uid && l.until > now) {
       const last = othersLastSeen[k] || 0;
@@ -194,7 +208,7 @@ function refreshTopbar(){
   const selectedPixels = selected.size * 100;
   if (selectedPixels > 0) {
     const total = selectedPixels * currentPrice;
-    buyBtn.textContent = `Buy Pixels — ${formatInt(selectedPixels)} px (${formatMoney(total)})`;
+    buyBtn.textContent = `Buy Pixels – ${formatInt(selectedPixels)} px (${formatMoney(total)})`;
     buyBtn.disabled = false;
   } else { buyBtn.textContent = `Buy Pixels`; buyBtn.disabled = true; }
 }
@@ -260,7 +274,7 @@ function openModal(){
   const currentPrice = 1 + Math.floor(pixelsSold / 1000) * 0.01;
   const selectedPixels = selected.size * 100;
   const total = selectedPixels * currentPrice;
-  modalStats.textContent = `${formatInt(selectedPixels)} px — ${formatMoney(total)}`;
+  modalStats.textContent = `${formatInt(selectedPixels)} px – ${formatMoney(total)}`;
   
   // ✅ UN SEUL heartbeat !
   if (currentLock.length) {
@@ -305,7 +319,7 @@ window.addEventListener('keydown', (e)=>{
 
 
 async function reserve(indices) {
-  const r = await fetchWithJWT('/.netlify/functions/reserve', {
+  const r = await window.fetchWithJWT('/.netlify/functions/reserve', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
@@ -341,7 +355,7 @@ async function reserve(indices) {
 async function unlock(indices){
   console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
   
-  const r = await fetchWithJWT('/.netlify/functions/unlock', {
+  const r = await window.fetchWithJWT('/.netlify/functions/unlock', {
     method:'POST', 
     headers:{'content-type':'application/json'},
     body: JSON.stringify({ uid, blocks: indices })
@@ -416,7 +430,7 @@ form.addEventListener('submit', async (e)=>{
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
     const blocks = currentLock.length ? currentLock.slice() : Array.from(selected);
-    const r = await fetchWithJWT('/.netlify/functions/finalize', {
+    const r = await window.fetchWithJWT('/.netlify/functions/finalize', {
       method:'POST', headers:{'content-type':'application/json'},
       body: JSON.stringify({ uid, blocks, linkUrl, name, email })
     });
@@ -460,7 +474,7 @@ async function loadStatus() {
     const s = await r.json();
     if (!s || !s.ok) return;
 
-    // 1) Màj des ventes
+    // 1) Mj des ventes
     sold = s.sold || {};
     const newSold = s.sold || {};
 
@@ -471,7 +485,7 @@ async function loadStatus() {
     for (const [k, l] of Object.entries(incoming)) {
       if (!l) continue;
       if (l.uid !== uid && l.until > now) {
-        othersHold[k] = now + OTHERS_GRACE_MS;  // on les gardera au moins jusque-là
+        othersHold[k] = now + OTHERS_GRACE_MS;  // on les gardera au moins jusque-là 
       }
     }
 
@@ -521,18 +535,19 @@ async function loadStatus() {
 
 
 (async function init(){ 
-  await loadStatus(); paintAll(); 
-  /*setInterval(async()=>{ await loadStatus(); paintAll(); }, 2500); */
-  setInterval(async()=>{ 
-  console.log('⏰ [POLLING PRINCIPAL] Début cycle');
+  // Initialiser l'UID sécurisé en premier
+  await initUID();
+  
   await loadStatus(); 
   paintAll(); 
-  console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);
-}, 2500);
-
-}
-
-)();
+  
+  setInterval(async()=>{ 
+    console.log('⏰ [POLLING PRINCIPAL] Début cycle');
+    await loadStatus(); 
+    paintAll(); 
+    console.log('⏰ [POLLING PRINCIPAL] Fin cycle - locks actuels:', Object.keys(locks).length);
+  }, 2500);
+})();
 
 window.__regionsPoll && clearInterval(window.__regionsPoll);
 window.__regionsPoll = setInterval(async () => {
@@ -609,7 +624,6 @@ window.renderRegions = renderRegions;
   }
 })();
 console.log('✅ Unified polling implemented - no more timing conflicts!');
-/*console.log('app.js (robust locks + heartbeat) loaded');*/
 
 // BONUS : Fonction de nettoyage manuel pour débugger
 function debugCleanExpiredLocks() {
@@ -627,3 +641,10 @@ function debugCleanExpiredLocks() {
   console.log(`🧹 [DEBUG] Nettoyage: ${before} -> ${after} locks`);
   paintAll();
 }
+
+// Export des fonctions utiles pour debugging
+window.debugCleanExpiredLocks = debugCleanExpiredLocks;
+window.loadStatus = loadStatus;
+window.paintAll = paintAll;
+
+console.log('✅ App.js sécurisé avec JWT chargé - UID sera initialisé automatiquement');

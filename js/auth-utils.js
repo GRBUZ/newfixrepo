@@ -1,30 +1,43 @@
-// === JWT Auth Setup ===
-let jwtToken = null;
-// Utilitaire pour ajouter l'en-tête Authorization
 
-async function fetchWithJWT(url, options = {}) {
-  const token = localStorage.getItem('jwtToken');
-  const headers = options.headers || {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(url, { ...options, headers });
-}
-// Récupération du token JWT (exemple à adapter selon votre backend)
-async function fetchJwtToken() {
-  try {
-    const res = await fetch('/.netlify/functions/get-token');
-    const data = await res.json();
-    if (res.ok && data.token) {
-      jwtToken = data.token;
-      console.log('[JWT] Token reçu:', jwtToken);
-    } else {
-      console.error('[JWT] Erreur token:', data.error || res.statusText);
+// auth-utils.js — Utilitaires JWT sans import/export (utilisation via <script>)
+// Déclare les fonctions globales : window.fetchWithJWT et window.authUtils.getUIDFromToken
+
+(function(){
+  const jwtKey = 'jwtToken';
+
+  // Fonction pour envoyer un fetch avec le JWT stocké
+  async function fetchWithJWT(url, options = {}) {
+    const token = localStorage.getItem(jwtKey);
+    const headers = options.headers || {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-  } catch (e) {
-    console.error('[JWT] Exception lors de la récupération du token', e);
+    return fetch(url, { ...options, headers });
   }
-}
 
-// Appelle cette fonction au chargement
-fetchJwtToken();
+  // Fonction pour décoder le payload du JWT sans vérifier la signature (client-side only)
+  function decodeJWT(token) {
+    try {
+      const payload = token.split('.')[1];
+      const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+      return JSON.parse(json);
+    } catch (e) {
+      console.warn('[auth-utils] Impossible de décoder le JWT');
+      return null;
+    }
+  }
 
-export { fetchWithJWT, fetchJwtToken };
+  // Fonction pour récupérer le UID du token JWT (si disponible)
+  function getUIDFromToken() {
+    const token = localStorage.getItem(jwtKey);
+    if (!token) return null;
+    const decoded = decodeJWT(token);
+    return decoded?.uid || null;
+  }
+
+  // Initialisation globale
+  window.fetchWithJWT = fetchWithJWT;
+  window.authUtils = {
+    getUIDFromToken
+  };
+})();

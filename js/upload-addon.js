@@ -1,4 +1,41 @@
-import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
+// UID sécurisé via JWT
+let uid = null;
+
+// Initialisation asynchrone de l'UID
+async function initUID() {
+  try {
+    // Vérifier que les utilitaires d'auth sont chargés
+    if (!window.authUtils) {
+      throw new Error('Auth utils non chargés');
+    }
+    
+    // Essayer de récupérer l'UID depuis le token JWT existant
+    uid = window.authUtils.getUIDFromToken();
+    
+    if (!uid) {
+      // Si pas de token valide, en créer un nouveau via une requête test
+      await window.fetchWithJWT('/.netlify/functions/status');
+      uid = window.authUtils.getUIDFromToken();
+    }
+    
+    if (!uid) {
+      throw new Error('Impossible de récupérer l\'UID');
+    }
+    
+    window.uid = uid;
+    console.log('✅ UID sécurisé initialisé:', uid.slice(0, 8) + '...');
+    
+  } catch (error) {
+    console.error('❌ Erreur initialisation UID:', error);
+    // Fallback vers l'ancien système en cas de problème
+    uid = localStorage.getItem('iw_uid_fallback') || 
+          Date.now().toString(36) + Math.random().toString(36).slice(2);
+    localStorage.setItem('iw_uid_fallback', uid);
+    window.uid = uid;
+    console.log('⚠️ Utilisation UID fallback:', uid.slice(0, 8) + '...');
+  }
+}
+
 // upload-addon.js — handles profile photo upload to assets/images via Netlify Function
 (function(){
   const input = document.getElementById('avatar');
@@ -30,7 +67,7 @@ import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
       const contentType = m[1];
       const b64 = m[2];
 
-      const r = await fetchWithJWT('/.netlify/functions/upload', {
+      const r = await window.fetchWithJWT('/.netlify/functions/upload', {
         method:'POST',
         headers:{'content-type':'application/json'},
         body: JSON.stringify({ filename: file.name, contentType, data: b64 })
@@ -64,7 +101,7 @@ const linkPayload = {
   imageUrl: repoPath   // <- peut être un chemin repo OU une URL http(s)
 };
 
-const resp = await fetchWithJWT('/.netlify/functions/link-image', {
+const resp = await window.fetchWithJWT('/.netlify/functions/link-image', {
   method: 'POST',
   headers: { 'content-type':'application/json' },
   body: JSON.stringify(linkPayload)
