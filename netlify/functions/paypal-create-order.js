@@ -1,5 +1,5 @@
 // netlify/functions/paypal-create-order.js
-const { requireAuth, getAuthenticatedUID } = require('../../jwt-middleware.js');
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
