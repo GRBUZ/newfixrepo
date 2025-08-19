@@ -1,3 +1,4 @@
+import jwt from 'jsonwebtoken';
 // netlify/functions/status.mjs — returns sold, locks, regions
 const STATE_PATH = process.env.STATE_PATH || "data/state.json";
 const GH_REPO = process.env.GH_REPO;
