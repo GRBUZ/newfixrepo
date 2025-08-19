@@ -1,4 +1,6 @@
 // app.js — robust locks: local-wins merge + heartbeat during modal
+import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
+
 // Anti-flicker pour les locks d’autrui
 const othersLastSeen = Object.create(null); // idx -> lastSeen timestamp
 const OTHERS_GRACE_MS = 5000;              // garde un lock d’autrui jusqu’à 5s s’il “disparaît” ponctuellement
@@ -28,7 +30,8 @@ function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'
   // 1. UID génération plus robuste pour Edge
 const uid = (()=>{ 
     const k='iw_uid'; 
-    let v=localStorage.getItem(k); 
+
+let v=localStorage.getItem(k); 
     if(!v){ 
         // Meilleure compatibilité Edge
         if (window.crypto && window.crypto.randomUUID) {
@@ -52,7 +55,7 @@ let sold = {};
 let locks = {};
 let selected = new Set();
 let holdIncomingLocksUntil = 0;   // fenêtre pendant laquelle on NE TOUCHE PAS aux locks venant du serveur
-
+let lastStatus = null;
 
 // Heartbeat while modal open
 let currentLock = [];
@@ -102,7 +105,6 @@ function mergeLocksPreferLocal(local, incoming){
 
   return out;
 }
-
 
 let isDragging=false, dragStartIdx=-1, movedDuringDrag=false, lastDragIdx=-1, suppressNextClick=false;
 let blockedDuringDrag = false;
@@ -272,15 +274,16 @@ function closeModal(){
   stopHeartbeat(); // ← C'est suffisant, pas besoin de répéter
 }
 
-document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', async () => {
-  // PRENDS un snapshot AVANT
+
+async function handleCancelAction(){
+  // Snapshot AVANT
   const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
 
-  // 🔒 Couper toute relock possible AVANT d’unlock
+  // 🔒 Empêcher relock
   currentLock = [];
   stopHeartbeat();
 
-  // Libère au serveur
+  // Libération serveur
   if (toRelease.length) {
     try { await unlock(toRelease); } catch {}
   }
@@ -288,56 +291,57 @@ document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('cli
   closeModal();
   clearSelection();
   setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
-}));
+}
 
-
-window.addEventListener('keydown', async (e)=>{
+document.querySelectorAll('[data-close]').forEach(el =>
+  el.addEventListener('click', handleCancelAction)
+);
+window.addEventListener('keydown', (e)=>{
   if(e.key==='Escape' && !modal.classList.contains('hidden')){
-    const toRelease = (currentLock && currentLock.length) ? currentLock.slice() : Array.from(selected);
-
-    currentLock = [];
-    stopHeartbeat();
-
-    if (toRelease.length) {
-      try { await unlock(toRelease); } catch {}
-    }
-
-    closeModal();
-    clearSelection();
-    setTimeout(async () => { await loadStatus(); paintAll(); }, 150);
+    handleCancelAction();
   }
 });
 
 
-async function reserve(indices){
-  const r = await fetch('/.netlify/functions/reserve', {
-    method:'POST',
-    headers:{'content-type':'application/json'},
+
+async function reserve(indices) {
+  const r = await fetchWithJWT('/.netlify/functions/reserve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uid, blocks: indices, ttl: 300000 })
   });
-  const res=await r.json();
-  if(!r.ok||!res.ok) throw new Error(res.error||('HTTP '+r.status));
 
-  // Ensure local locks reflect what we just reserved, with a full TTL
+  const res = await r.json();
+  if (!r.ok || !res.ok) throw new Error(res.error || ('HTTP ' + r.status));
+
   const now = Date.now();
-  for (const i of (res.locked||[])){
-    locks[i] = { uid, until: now + 300000 };
+
+  // Locks que TU viens de réserver
+  const newLocalLocks = {};
+  for (const i of (res.locked || [])) {
+    newLocalLocks[i] = { uid, until: now + 300000 };
   }
-  // Merge incoming (others' locks) without dropping ours
-  locks = mergeLocksPreferLocal(locks, res.locks || {});
+
+  // ✅ Fusionne avec l'existant sans perdre les tiens
+  locks = mergeLocksPreferLocal(
+    { ...locks, ...newLocalLocks }, // anciens locks + les tiens à jour
+    res.locks || {}                 // ceux du serveur
+  );
+
   paintAll();
-  
-  // Empêche loadStatus() d’écraser nos locks pendant 8s (latence GitHub/Netlify)
+
+  // Protège les tiens pendant 8s
   holdIncomingLocksUntil = Date.now() + 8000;
-  // Souviens-toi de ce que TU viens de réserver (pour le heartbeat et la finalisation)
   currentLock = Array.isArray(res.locked) ? res.locked.slice() : [];
+
   return res;
 }
+
 
 async function unlock(indices){
   console.log('🔓 [UNLOCK] Début pour', indices.length, 'blocs:', indices);
   
-  const r = await fetch('/.netlify/functions/unlock',{
+  const r = await fetchWithJWT('/.netlify/functions/unlock', {
     method:'POST', 
     headers:{'content-type':'application/json'},
     body: JSON.stringify({ uid, blocks: indices })
@@ -352,17 +356,32 @@ async function unlock(indices){
     console.error('❌ [UNLOCK] Échec:', res.error || ('HTTP '+r.status));
     throw new Error(res.error || ('HTTP '+r.status));
   }
-  
-  // ✅ CORRECTION CRITIQUE : Mettre à jour les locks ET supprimer la protection
-  locks = res.locks || {}; 
+
+  // ✅ PATCH sécurisé : fusionne intelligemment les locks
+  const now = Date.now();
+  const newLocks = {};
+
+  // 1. Ajoute les locks renvoyés par le serveur (valides)
+  for (const [k, l] of Object.entries(res.locks || {})) {
+    if (l && l.until > now) newLocks[k] = l;
+  }
+
+  // 2. Conserve les locks LOCAUX encore valides NON mentionnés dans la réponse
+  for (const [k, l] of Object.entries(locks || {})) {
+    if (!(k in newLocks) && l && l.uid === uid && l.until > now) {
+      newLocks[k] = l;
+    }
+  }
+
+  locks = newLocks; 
   holdIncomingLocksUntil = 0; // ✅ Supprimer immédiatement la protection !
-  
+
   console.log('🔄 [UNLOCK] Locks mis à jour:', Object.keys(locks).length);
-  console.log('🔄 [UNLOCK] Protection supprimée');
   
   paintAll(); 
   return res;
 }
+
 
 
 buyBtn.addEventListener('click', async ()=>{
@@ -397,7 +416,7 @@ form.addEventListener('submit', async (e)=>{
   confirmBtn.disabled=true; confirmBtn.textContent='Processing…';
   try{
     const blocks = currentLock.length ? currentLock.slice() : Array.from(selected);
-    const r = await fetch('/.netlify/functions/finalize', {
+    const r = await fetchWithJWT('/.netlify/functions/finalize', {
       method:'POST', headers:{'content-type':'application/json'},
       body: JSON.stringify({ uid, blocks, linkUrl, name, email })
     });
@@ -433,14 +452,17 @@ function rectFromIndices(arr){
 // Remplacez le début de loadStatus() par ceci pour voir la réponse brute :
 
 // CORRECTION CRITIQUE : Nettoyer les locks expirés dans loadStatus
-async function loadStatus(){
-  try{
-    const r = await fetch('/.netlify/functions/status', { cache:'no-store' });
+let lastStatusCache = { sold: null, visible: null };
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/.netlify/functions/status', { cache: 'no-store' });
     const s = await r.json();
     if (!s || !s.ok) return;
 
     // 1) Màj des ventes
     sold = s.sold || {};
+    const newSold = s.sold || {};
 
     const incoming = s.locks || {};
     const now = Date.now();
@@ -481,11 +503,22 @@ async function loadStatus(){
       }
     }
 
-    // 5) remplace la carte active et repeins
-    locks = visible;
-    paintAll();
-  } catch {}
+    // 5) Vérifie les changements
+    const soldChanged = JSON.stringify(newSold) !== JSON.stringify(lastStatusCache.sold);
+    const visibleChanged = JSON.stringify(visible) !== JSON.stringify(lastStatusCache.visible);
+
+    if (soldChanged || visibleChanged) {
+      sold = newSold;
+      locks = visible;
+      paintAll();
+      lastStatusCache = { sold: newSold, visible };
+    }
+    
+  } catch (e) {
+    console.warn('loadStatus() failed', e);
+  }
 }
+
 
 (async function init(){ 
   await loadStatus(); paintAll(); 
