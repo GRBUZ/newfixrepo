@@ -1,5 +1,5 @@
 // netlify/functions/auth-token.js
-const { generateJWT, generateSecureUID } = require('js/auth-utils.js');
+const { generateJWT, generateSecureUID } = require('../../js/auth-utils.js');
 
 exports.handler = async (event, context) => {
   // Headers CORS
