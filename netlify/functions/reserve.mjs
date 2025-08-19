@@ -58,7 +58,6 @@ function parseState(raw) {
   if (!raw) return { sold:{}, locks:{} };
   try {
     const obj = JSON.parse(raw);
-    // Back-compat: if previous format was {artCells:{...}}
     if (obj.artCells && !obj.sold) {
       const sold = {};
       for (const [k,v] of Object.entries(obj.artCells)) {
@@ -83,8 +82,6 @@ function pruneLocks(locks) {
   return out;
 }
 
-const TTL_MS = 3 * 60 * 1000;
-
 export default async (req) => {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.split(' ')[1];
@@ -93,70 +90,45 @@ export default async (req) => {
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ ok: false, error: 'Invalid or missing token' }),
-    };
+    return new Response(JSON.stringify({ ok: false, error: 'Invalid or missing token' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' }
+    });
   }
 
-  // Le uid est maintenant disponible via decoded.uid
   const uid = decoded.uid;
+
   try {
     if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
     const body = await req.json();
-    const uid = (body.uid || '').toString();
     const blocks = Array.isArray(body.blocks) ? body.blocks.map(n=>parseInt(n,10)).filter(n=>Number.isInteger(n)&&n>=0&&n<10000) : [];
+    const ttl = Math.max(60000, Math.min(300000, parseInt(body.ttl, 10) || 180000));
     if (!uid || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
 
-    // Read current state
     let got = await ghGetFile(PATH_JSON);
     let sha = got.sha;
     let st = parseState(got.content);
     st.locks = pruneLocks(st.locks);
 
-    // Build lock set
     const now = Date.now();
-    const until = now + TTL_MS;
-    const locked = [];
-    const conflicts = [];
-
     for (const b of blocks) {
       const key = String(b);
-      if (st.sold[key]) { conflicts.push(b); continue; }
-      const l = st.locks[key];
-      if (l && l.until > now && l.uid !== uid) { conflicts.push(b); continue; }
-      st.locks[key] = { uid, until };
-      locked.push(b);
+      st.locks[key] = { uid, until: now + ttl };
     }
 
-    // Commit only if something changed
     const newContent = JSON.stringify(st, null, 2);
-    let newSha;
     try {
-      newSha = await ghPutFile(PATH_JSON, newContent, sha, `reserve ${locked.length} blocks by ${uid}`);
+      const newSha = await ghPutFile(PATH_JSON, newContent, sha, `reserve ${blocks.length} by ${uid}`);
+      return jres(200, { ok:true, locks: st.locks });
     } catch (e) {
-      // Retry once on conflict (sha changed)
       if (String(e).includes('GITHUB_PUT_FAILED 409')) {
         got = await ghGetFile(PATH_JSON);
-        sha = got.sha; st = parseState(got.content); st.locks = pruneLocks(st.locks);
-        // recompute with fresh state (single pass)
-        const locked2 = [];
-        const now2 = Date.now(); const until2 = now2 + TTL_MS;
-        for (const b of blocks) {
-          const key = String(b);
-          if (st.sold[key]) continue;
-          const l = st.locks[key];
-          if (l && l.until > now2 && l.uid !== uid) continue;
-          st.locks[key] = { uid, until: until2 };
-          locked2.push(b);
-        }
-        const content2 = JSON.stringify(st, null, 2);
-        newSha = await ghPutFile(PATH_JSON, content2, got.sha, `reserve(retry) ${locked2.length} by ${uid}`);
-        return jres(200, { ok:true, locked: locked2, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
+        const st2 = parseState(got.content);
+        st2.locks = pruneLocks(st2.locks);
+        return jres(200, { ok:true, locks: st2.locks });
       }
       throw e;
     }
-    return jres(200, { ok:true, locked, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
   } catch (e) {
     return jres(500, { ok:false, error:'RESERVE_FAILED', message: String(e) });
   }
