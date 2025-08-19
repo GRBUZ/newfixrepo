@@ -1,4 +1,3 @@
-import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
 // upload-addon.js — handles profile photo upload to assets/images via Netlify Function
 (function(){
   const input = document.getElementById('avatar');
@@ -30,7 +29,7 @@ import { fetchWithJWT, fetchJwtToken } from './auth-utils.js';
       const contentType = m[1];
       const b64 = m[2];
 
-      const r = await fetchWithJWT('/.netlify/functions/upload', {
+      const r = await fetch('/.netlify/functions/upload', {
         method:'POST',
         headers:{'content-type':'application/json'},
         body: JSON.stringify({ filename: file.name, contentType, data: b64 })
@@ -64,7 +63,7 @@ const linkPayload = {
   imageUrl: repoPath   // <- peut être un chemin repo OU une URL http(s)
 };
 
-const resp = await fetchWithJWT('/.netlify/functions/link-image', {
+const resp = await fetch('/.netlify/functions/link-image', {
   method: 'POST',
   headers: { 'content-type':'application/json' },
   body: JSON.stringify(linkPayload)
