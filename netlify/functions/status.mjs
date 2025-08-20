@@ -1,3 +1,15 @@
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
+const secret = process.env.JWT_SECRET || 'changeme-please';
+const token = jwt.sign({ uid: generateUID() }, secret, { expiresIn: '7d' });
+
+return new Response(JSON.stringify({ ...tes données..., token }), {
+  status: 200,
+  headers: {
+    'Content-Type': 'application/json',
+    'cache-control': 'no-store'
+  }
+});
+
 // netlify/functions/status.mjs — returns sold, locks, regions
 const STATE_PATH = process.env.STATE_PATH || "data/state.json";
 const GH_REPO = process.env.GH_REPO;
