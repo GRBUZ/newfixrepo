@@ -87,7 +87,7 @@ async function ghPutBinary(path, buffer, message){
   return put.json();
 }
 
-export default async (req) => {
+exports.handler = async (event) => {
   try {
     // Vérification de l'authentification JWT
     const authCheck = requireAuth(req);

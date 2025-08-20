@@ -82,7 +82,8 @@ function normalizeUrl(raw) {
   return u.toString();    // URL normalisée
 }
 
-export default async (req) => {
+//export default async (req) => {
+exports.handler = async (event) => {
   try {
     // Vérification de l'authentification JWT
     const authCheck = requireAuth(req);

@@ -52,7 +52,8 @@ function toAbsoluteUrl(imageUrl){
   return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${p}`;
 }
 
-export default async (req) => {
+//export default async (req) => {
+exports.handler = async (event) => {
   try {
     // Vérification de l'authentification JWT
     const authCheck = requireAuth(req);

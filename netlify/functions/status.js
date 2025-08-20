@@ -11,7 +11,8 @@ function bad(status, error){
   });
 }
 
-export default async () => {
+//export default async () => {
+exports.handler = async (event) => {
   try {
     if (!GH_REPO || !GH_TOKEN) return bad(500, "GITHUB_CONFIG_MISSING");
     const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(STATE_PATH)}?ref=${GH_BRANCH}`, {

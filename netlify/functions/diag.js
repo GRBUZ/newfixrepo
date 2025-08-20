@@ -81,7 +81,8 @@ function pruneLocks(locks) {
   return out;
 }
 
-export default async () => {
+//export default async () => {
+exports.handler = async (event) => {
   try {
     if (!GH_REPO || !GH_TOKEN) {
       return jres(500, { ok:false, error:'MISSING_ENV', need: ['GH_REPO','GH_TOKEN'], have: { GH_REPO: !!GH_REPO, GH_TOKEN: !!GH_TOKEN } });
