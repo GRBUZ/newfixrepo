@@ -1,53 +1,67 @@
-// Utilitaires d'auth (compatible navigateur + Node/Netlify Functions)
-// Ne doit pas utiliser `window` au top-level pour éviter "window is not defined".
-'use strict';
+(function (global, factory) {
+  // CommonJS (Node / Netlify)
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    // Browser global (attach to globalThis)
+    global.authUtils = factory();
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this), function () {
+  'use strict';
 
-function getTokenFromReq(req) {
-  // 1) Priorité : token dans les headers (Authorization: Bearer ...)
-  if (req && req.headers) {
-    const auth = req.headers.authorization || req.headers.Authorization;
-    if (auth && typeof auth === 'string') {
-      const m = auth.match(/^Bearer\s+(.+)$/i);
-      if (m) return m[1];
-      return auth; // si pas de "Bearer", renvoyer la valeur brute
+  // Récupère un token JWT soit depuis un "req" (server), soit depuis headers/cookie,
+  // sinon depuis localStorage si on est en navigateur.
+  function getTokenFromReq(req) {
+    // 1) headers Authorization Bearer
+    if (req && req.headers) {
+      const auth = req.headers.authorization || req.headers.Authorization;
+      if (auth && typeof auth === 'string') {
+        const m = auth.match(/^Bearer\s+(.+)$/i);
+        if (m) return m[1];
+        return auth;
+      }
+      // cookie: jwt or token
+      const cookie = req.headers.cookie || req.headers.Cookie;
+      if (cookie && typeof cookie === 'string') {
+        const m = cookie.match(/(?:^|;\s*)(?:jwt|token)=([^;]+)/);
+        if (m) return m[1];
+      }
     }
-    // 2) Cookie (ex: cookie "jwt" ou "token")
-    const cookie = req.headers.cookie || req.headers.Cookie;
-    if (cookie && typeof cookie === 'string') {
-      const m = cookie.match(/(?:^|;\s*)(?:jwt|token)=([^;]+)/);
-      if (m) return m[1];
+
+    // 2) browser localStorage (only if window/localStorage exist)
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem('jwt') || window.localStorage.getItem('token') || null;
     }
+
+    return null;
   }
 
-  // 3) Si on est en navigateur (window existe), essayer localStorage
-  if (typeof window !== 'undefined' && window.localStorage) {
-    return window.localStorage.getItem('jwt') || window.localStorage.getItem('token') || null;
-  }
+  // fetchWithJWT: envoie Authorization: Bearer <token> si trouvé (req priority)
+  async function fetchWithJWT(input, init = {}, req = undefined) {
+    const headers = Object.assign({}, init.headers || {});
 
-  return null;
-}
+    // token from req or from headers passed in init
+    const fromReq = getTokenFromReq(req);
+    const fromInitHeader = headers.Authorization || headers.authorization;
+    const token = fromReq || (fromInitHeader ? (String(fromInitHeader).replace(/^Bearer\s+/i, '')) : null);
 
-async function fetchWithJWT(input, init = {}, req = undefined) {
-  // Récupère le token à partir de req (si fourni) ou de l'environnement client
-  const token = getTokenFromReq(req) || (init.headers && (init.headers.Authorization || init.headers.authorization));
-  const headers = Object.assign({}, init.headers || {});
-
-  if (token) {
-    // Normaliser header Authorization
-    if (!headers.Authorization && !headers.authorization) {
-      headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      if (!headers.Authorization && !headers.authorization) {
+        headers.Authorization = `Bearer ${token}`;
+      }
     }
+
+    // pick fetch implementation (browser or node + polyfilled fetch)
+    const fetchFn = (typeof fetch !== 'undefined') ? fetch : (typeof globalThis !== 'undefined' ? globalThis.fetch : undefined);
+    if (!fetchFn) throw new Error('fetch not available in this runtime');
+
+    const realInit = Object.assign({}, init, { headers });
+    return fetchFn(input, realInit);
   }
 
-  const fetchFn = (typeof fetch !== 'undefined') ? fetch : (typeof globalThis !== 'undefined' ? globalThis.fetch : undefined);
-  if (!fetchFn) throw new Error('fetch not available in this runtime');
-
-  const realInit = Object.assign({}, init, { headers });
-  return fetchFn(input, realInit);
-}
-
-// Pour compatibilité CommonJS
-module.exports = {
-  getTokenFromReq,
-  fetchWithJWT
-};
+  // Export the utilities
+  return {
+    getTokenFromReq,
+    fetchWithJWT
+  };
+});
