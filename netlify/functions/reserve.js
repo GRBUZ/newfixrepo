@@ -1,4 +1,4 @@
-const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware');
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
 
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
@@ -8,10 +8,11 @@ const PATH_JSON = process.env.PATH_JSON || 'data/state.json';
 const API_BASE = 'https://api.github.com';
 
 function jres(status, obj) {
-  return new Response(JSON.stringify(obj), {
-    status,
+  return {
+    statusCode: status,
+    body: JSON.stringify(obj),
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
-  });
+  };
 }
 
 async function ghGetFile(path) {
@@ -85,12 +86,34 @@ function pruneLocks(locks) {
 const TTL_MS = 3 * 60 * 1000;
 
 exports.handler = async (event) => {
-  console.log("🔹 [reserve] Incoming request:", event);
+  console.log("🔹 [reserve] Incoming request:", { path: event.path, method: event.httpMethod });
+
   try {
+    // quick env check to give clearer error if missing
+    if (!GH_REPO || !GH_TOKEN) {
+      console.error('[reserve] Missing GH_REPO or GH_TOKEN');
+      return jres(500, { ok:false, error:'CONFIG_ERROR', message:'GH_REPO or GH_TOKEN not set' });
+    }
+
+    // Recreate a "req" object compatible with the existing requireAuth/getAuthenticatedUID usage
+    const req = {
+      method: event.httpMethod,
+      headers: event.headers || {},
+      json: async () => {
+        if (!event.body) return {};
+        try {
+          return JSON.parse(event.body);
+        } catch (err) {
+          // if body is already an object for some runtime, return as-is
+          return typeof event.body === 'object' ? event.body : {};
+        }
+      }
+    };
+
     // Vérification de l'authentification JWT
     const authCheck = requireAuth(req);
-    if (!authCheck.success) {
-      return jres(401, { ok: false, error: 'UNAUTHORIZED', message: authCheck.message });
+    if (!authCheck || !authCheck.success) {
+      return jres(401, { ok: false, error: 'UNAUTHORIZED', message: authCheck ? authCheck.message : 'auth failed' });
     }
 
     if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
@@ -153,6 +176,7 @@ exports.handler = async (event) => {
     }
     return jres(200, { ok:true, locked, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
   } catch (e) {
+    console.error('❌ [reserve] Error:', e);
     return jres(500, { ok:false, error:'RESERVE_FAILED', message: String(e) });
   }
 };
