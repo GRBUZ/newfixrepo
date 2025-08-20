@@ -1,5 +1,5 @@
 // UID sécurisé via JWT
-let uid = null;
+//let uid = null;
 
 // Initialisation asynchrone de l'UID
 async function initUID() {

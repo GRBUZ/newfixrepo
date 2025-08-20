@@ -28,7 +28,7 @@ function formatInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 function formatMoney(n){ const [i,d]=Number(n).toFixed(2).split('.'); return '$'+i.replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '.' + d; }
 
 // UID sécurisé via JWT
-let uid = null;
+//let uid = null;
 
 // Initialisation asynchrone de l'UID
 async function initUID() {
