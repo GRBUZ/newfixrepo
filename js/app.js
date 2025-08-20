@@ -43,7 +43,7 @@ async function initUID() {
     
     if (!uid) {
       // Si pas de token valide, en créer un nouveau via une requête test
-      await window.fetchWithJWT('/.netlify/functions/status');
+      await fetch('/.netlify/functions/status');
       uid = window.authUtils.getUIDFromToken();
     }
     

@@ -7,7 +7,7 @@ async function initUID() {
     window.uid = window.authUtils.getUIDFromToken();
     //let uid = window.authUtils.getUIDFromToken();
     if (!window.uid) {
-      await window.fetchWithJWT('/.netlify/functions/status');
+      await fetch('/.netlify/functions/status');
       window.uid = window.authUtils.getUIDFromToken();
     }
     if (!window.uid) throw new Error('Impossible de récupérer l UID');
