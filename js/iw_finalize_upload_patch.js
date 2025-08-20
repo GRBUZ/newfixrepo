@@ -1,43 +1,98 @@
-// UID sécurisé via JWT
-//let uid = null;
+// iw_finalize_upload_patch.js — UID unify + DOM-selection + file input id compat
+// Corrections : fixe la faute "fatch", attend l'init asynchrone du JWT, fallback propre sur fetchWithJWT
 
-// Initialisation asynchrone de l'UID
+// Déclare la variable ici pour pouvoir la modifier dans initUID()
+let uid = null;
+
+// Initialisation asynchrone de l'UID via JWT si possible
 async function initUID() {
   try {
     // Vérifier que les utilitaires d'auth sont chargés
-    if (!window.authUtils) {
+    const hasAuthUtils = typeof window !== 'undefined' && (window.authUtils || window.fetchWithJWT || window.getUIDFromToken);
+    if (!hasAuthUtils) {
       throw new Error('Auth utils non chargés');
     }
-    
-    // Essayer de récupérer l'UID depuis le token JWT existant
-    uid = window.authUtils.getUIDFromToken();
-    
-    if (!uid) {
-      // Si pas de token valide, en créer un nouveau via une requête test
-      await fatch('/.netlify/functions/status');
-      uid = window.authUtils.getUIDFromToken();
+
+    // 1) Essayer de récupérer l'UID depuis le token JWT existant (via authUtils ou alias global)
+    const getUID = (window.authUtils && window.authUtils.getUIDFromToken) ? window.authUtils.getUIDFromToken : (window.getUIDFromToken || null);
+    if (typeof getUID === 'function') {
+      const found = getUID();
+      if (found) {
+        uid = found;
+        window.uid = uid;
+        console.log('✅ UID from token:', uid.slice(0,8) + '...');
+        return uid;
+      }
     }
-    
-    if (!uid) {
-      throw new Error('Impossible de récupérer l\'UID');
+
+    // 2) Si pas d'UID, effectuer une requête vers le backend pour forcer éventuellement la création/renvoi d'un token
+    // Utilise fetchWithJWT si disponible, sinon fallback sur fetch
+    const fetchFn = window.fetchWithJWT || (window.authUtils && window.authUtils.fetchWithJWT) || window.fetch;
+    if (!fetchFn) throw new Error('fetch non disponible');
+
+    try {
+      // on ne dépend pas du résultat mais la requête peut provoquer la création d'un cookie / token côté serveur
+      await fetchFn('/.netlify/functions/status');
+    } catch (e) {
+      // ignore: l'appel peut échouer si le serveur refuse, on retentera de lire le token localement ensuite
+      console.warn('[initUID] status call failed (ignored):', e);
     }
-    
-    window.uid = uid;
-    console.log('✅ UID sécurisé initialisé:', uid.slice(0, 8) + '...');
-    
+
+    // 3) relire le token/uid après l'appel
+    if (typeof getUID === 'function') {
+      const found2 = getUID();
+      if (found2) {
+        uid = found2;
+        window.uid = uid;
+        console.log('✅ UID obtenu après status:', uid.slice(0,8) + '...');
+        return uid;
+      }
+    }
+
+    throw new Error('Impossible de récupérer l\'UID via JWT');
+
   } catch (error) {
     console.error('❌ Erreur initialisation UID:', error);
     // Fallback vers l'ancien système en cas de problème
-    uid = localStorage.getItem('iw_uid_fallback') || 
-          Date.now().toString(36) + Math.random().toString(36).slice(2);
-    localStorage.setItem('iw_uid_fallback', uid);
-    window.uid = uid;
-    console.log('⚠️ Utilisation UID fallback:', uid.slice(0, 8) + '...');
+    try {
+      uid = localStorage.getItem('iw_uid_fallback') || (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      localStorage.setItem('iw_uid_fallback', uid);
+      window.uid = uid;
+      console.log('⚠️ Utilisation UID fallback:', uid.slice(0,8) + '...');
+      return uid;
+    } catch (e) {
+      // En dernier recours
+      uid = window.uid || (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      window.uid = uid;
+      console.log('⚠️ Utilisation UID fallback (no storage):', uid.slice(0,8) + '...');
+      return uid;
+    }
   }
 }
 
 /* iw_finalize_upload_patch.js — UID unify + DOM-selection + file input id compat */
-(function(){
+(async function(){
+  // === UID unify (reuse existing window.uid if present; persist in localStorage) ===
+  function makeUid(){ try{ return crypto.randomUUID(); }catch(_){ return Date.now().toString(36)+Math.random().toString(36).slice(2); } }
+  (function ensureUid(){
+    try{
+      const k='iw_uid';
+      let v = (typeof window.uid !== 'undefined' && window.uid) ? String(window.uid) : (localStorage.getItem(k) || '');
+      if (!v) { v = makeUid(); }
+      localStorage.setItem(k, v);
+      window.uid = v; // <- single source of truth pour démarrage
+    }catch(_){
+      window.uid = window.uid || makeUid();
+    }
+  })();
+
+  // Attendre l'initialisation JWT (tentera d'écraser window.uid si succès)
+  await initUID();
+
+  // Maintenant on peut utiliser uid stable dans la closure
+  uid = window.uid;
+  console.log('[IW patch] UID unify active. uid=', uid);
+
   const grid        = document.getElementById('grid');
   const modal       = document.getElementById('modal');
   const form        = document.getElementById('form');
@@ -49,21 +104,6 @@ async function initUID() {
   const fileInput   = document.getElementById('image') || document.getElementById('avatar') || (form && form.querySelector('input[type="file"]'));
 
   if (!grid || !form || !confirmBtn) { console.warn('[IW patch] required elements not found'); return; }
-
-  // === UID unify (reuse existing window.uid if present; persist in localStorage) ===
-  function makeUid(){ try{ return crypto.randomUUID(); }catch(_){ return Date.now().toString(36)+Math.random().toString(36).slice(2); } }
-  (function ensureUid(){
-    try{
-      const k='iw_uid';
-      let v = (typeof window.uid !== 'undefined' && window.uid) ? String(window.uid) : (localStorage.getItem(k) || '');
-      if (!v) { v = makeUid(); }
-      localStorage.setItem(k, v);
-      window.uid = v; // <- single source of truth for ALL scripts
-    }catch(_){
-      window.uid = window.uid || makeUid();
-    }
-  })();
-  const uid = window.uid;
 
   // Always derive selected indices from DOM to avoid cross-browser mismatch
   function getSelectedIndices(){
@@ -101,7 +141,9 @@ async function initUID() {
   async function unlockSelection(){
     try{
       const blocks=getSelectedIndices(); if(!blocks.length) return;
-      await window.fetchWithJWT('/.netlify/functions/unlock',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks})});
+      const fetchFn = window.fetchWithJWT || (window.authUtils && window.authUtils.fetchWithJWT) || window.fetch;
+      if (!fetchFn) throw new Error('fetch non disponible');
+      await fetchFn('/.netlify/functions/unlock',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks})});
     }catch(_){}
   }
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') unlockSelection(); },{passive:true});
@@ -121,40 +163,47 @@ async function initUID() {
     if(!blocks.length){ alert('Please select at least one block.'); return; }
     if(!name||!linkUrl){ alert('Name and Profile URL are required.'); return; }
 
-    confirmBtn.disabled = true;
+    newBtn?.setAttribute('disabled','true');
 
     // Re-reserve just before finalize (if backend supports it), using the SAME uid
     try{
-      const rsv=await fetch('/.netlify/functions/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks,ttl:180000})});
-      const jr=await rsv.json();
+      const rsv = await fetch('/.netlify/functions/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,blocks,ttl:180000})});
+      const jr = await rsv.json();
       if(!jr.ok){
         await window.refreshStatus().catch(()=>{});
         alert(jr.error||'Some blocks are already locked/sold. Please reselect.');
-        confirmBtn.disabled=false; return;
+        newBtn?.removeAttribute('disabled');
+        return;
       }
     }catch(_){ /* ignore if not present */ }
 
     // Finalize WITH uid
-    const fRes=await window.fetchWithJWT('/.netlify/functions/finalize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,name,linkUrl,blocks})});
-    const out=await fRes.json();
-    if(!out.ok){ alert(out.error||'Finalize failed'); confirmBtn.disabled=false; return; }
+    try {
+      const fetchFn = window.fetchWithJWT || (window.authUtils && window.authUtils.fetchWithJWT) || window.fetch;
+      if (!fetchFn) throw new Error('fetch non disponible');
+      const fRes = await fetchFn('/.netlify/functions/finalize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uid,name,linkUrl,blocks})});
+      const out = await fRes.json();
+      if(!out.ok){ alert(out.error||'Finalize failed'); newBtn?.removeAttribute('disabled'); return; }
 
-    // Optional upload
-    try{
-      const file=fileInput&&fileInput.files&&fileInput.files[0];
-      if(file){
-        if(!file.type.startsWith('image/')) throw new Error('Please upload an image file.');
-        if(file.size>5*1024*1024) throw new Error('Max 5 MB.');
-        const fd=new FormData(); fd.append('file',file,file.name); fd.append('regionId',out.regionId);
-        const upRes=await window.fetchWithJWT('/.netlify/functions/upload',{method:'POST',body:fd});
-        const up=await upRes.json(); if(!up.ok) throw new Error(up.error||'UPLOAD_FAILED');
-        console.log('[IW patch] image linked:', up.imageUrl);
-      }
-    }catch(e){ console.warn('[IW patch] upload failed:', e); }
+      // Optional upload
+      try{
+        const file=fileInput&&fileInput.files&&fileInput.files[0];
+        if(file){
+          if(!file.type.startsWith('image/')) throw new Error('Please upload an image file.');
+          if(file.size>5*1024*1024) throw new Error('Max 5 MB.');
+          const fd=new FormData(); fd.append('file',file,file.name); fd.append('regionId',out.regionId);
+          const upFetch = window.fetchWithJWT || (window.authUtils && window.authUtils.fetchWithJWT) || window.fetch;
+          const upRes = await upFetch('/.netlify/functions/upload',{method:'POST',body:fd});
+          const up = await upRes.json(); if(!up.ok) throw new Error(up.error||'UPLOAD_FAILED');
+          console.log('[IW patch] image linked:', up.imageUrl);
+        }
+      }catch(e){ console.warn('[IW patch] upload failed:', e); }
 
-    await window.refreshStatus().catch(()=>{});
-    modal?.classList?.add('hidden');
-    confirmBtn.disabled=false;
+      await window.refreshStatus().catch(()=>{});
+      modal?.classList?.add('hidden');
+    } finally {
+      newBtn?.removeAttribute('disabled');
+    }
   }
 
   // Force-rebind Confirm to avoid old handler keeping a wrong uid
@@ -170,6 +219,6 @@ async function initUID() {
     nc.addEventListener('click', async (e)=>{ e.preventDefault(); await unlockSelection(); modal?.classList?.add('hidden'); });
   }
 
+  // Premier refresh
   window.refreshStatus().catch(()=>{});
-  console.log('[IW patch] UID unify active. uid=', uid);
 })();
