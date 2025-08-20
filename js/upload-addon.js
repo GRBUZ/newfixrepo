@@ -102,31 +102,27 @@ const linkPayload = {
 };
 
 
-(async function linkImageAfterUpload() {
-  try {
-    const regionId = out.regionId; // récupéré après /finalize
-    const repoPath = `assets/images/${regionId}/${filename}`; // ou ce que ton upload a produit
+// Capsule async dédiée pour linker l’image uploadée
+  (async function linkImageAfterUpload(regionId, repoPath){
     const linkPayload = {
       regionId,
       imageUrl: repoPath // <- peut être un chemin repo OU une URL http(s)
     };
 
-    const resp = await window.fetchWithJWT('/.netlify/functions/link-image', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(linkPayload)
-    });
-
-    const j = await resp.json();
-    if (!j.ok) {
-      console.warn('link-image failed:', j);
-    } else {
-      console.log('✅ image linked', j.imageUrl);
+    try {
+      const resp = await window.fetchWithJWT('/.netlify/functions/link-image', {
+        method: 'POST',
+        headers: { 'content-type':'application/json' },
+        body: JSON.stringify(linkPayload)
+      });
+      const j = await resp.json();
+      if (!j.ok) {
+        console.warn('link-image failed:', j);
+      } else {
+        console.log('✅ image linked', j.imageUrl);
+        if (typeof refreshStatus === 'function') refreshStatus();
+      }
+    } catch (err) {
+      console.error('Erreur link-image:', err);
     }
-
-    // Optionnel: refresh pour dessiner immédiatement
-    if (typeof refreshStatus === 'function') await refreshStatus();
-  } catch (e) {
-    console.error('Erreur dans link-image:', e);
-  }
 })();
