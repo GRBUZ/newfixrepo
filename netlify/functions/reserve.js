@@ -1,4 +1,4 @@
-const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware');
 
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
