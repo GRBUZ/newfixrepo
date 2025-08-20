@@ -1,33 +1,19 @@
 // UID sécurisé via JWT
-//let uid = null;
 
-// Initialisation asynchrone de l'UID
+// Initialisation asynchrone de l'UID (à appeler ailleurs)
 async function initUID() {
   try {
-    // Vérifier que les utilitaires d'auth sont chargés
-    if (!window.authUtils) {
-      throw new Error('Auth utils non chargés');
-    }
-    
-    // Essayer de récupérer l'UID depuis le token JWT existant
-    uid = window.authUtils.getUIDFromToken();
-    
-    if (!uid) {
-      // Si pas de token valide, en créer un nouveau via une requête test
+    if (!window.authUtils) throw new Error('Auth utils non chargés');
+    window.uid = window.authUtils.getUIDFromToken();
+    //let uid = window.authUtils.getUIDFromToken();
+    if (!window.uid) {
       await window.fetchWithJWT('/.netlify/functions/status');
-      uid = window.authUtils.getUIDFromToken();
+      window.uid = window.authUtils.getUIDFromToken();
     }
-    
-    if (!uid) {
-      throw new Error('Impossible de récupérer l\'UID');
-    }
-    
-    window.uid = uid;
-    console.log('✅ UID sécurisé initialisé:', uid.slice(0, 8) + '...');
-    
+    if (!window.uid) throw new Error('Impossible de récupérer l UID');
+    console.log('✅ UID sécurisé initialisé:', window.uid.slice(0, 8) + '...');
   } catch (error) {
     console.error('❌ Erreur initialisation UID:', error);
-    // Fallback vers l'ancien système en cas de problème
     uid = localStorage.getItem('iw_uid_fallback') || 
           Date.now().toString(36) + Math.random().toString(36).slice(2);
     localStorage.setItem('iw_uid_fallback', uid);
@@ -36,7 +22,6 @@ async function initUID() {
   }
 }
 
-// upload-addon.js — handles profile photo upload to assets/images via Netlify Function
 (function(){
   const input = document.getElementById('avatar');
   const out   = document.getElementById('uploadedUrl');
@@ -53,6 +38,22 @@ async function initUID() {
     });
   }
 
+  async function linkImageAfterUpload(regionId, imageUrl) {
+    if (!regionId || !imageUrl) return console.warn('Missing regionId or imageUrl');
+    try {
+      const resp = await window.fetchWithJWT('/.netlify/functions/link-image', {
+        method: 'POST',
+        headers: { 'content-type':'application/json' },
+        body: JSON.stringify({ regionId, imageUrl })
+      });
+      const j = await resp.json();
+      if (!j.ok) console.warn('link-image failed:', j);
+      else console.log('✅ image linked', j.imageUrl);
+    } catch (e) {
+      console.error('❌ error linking image:', e);
+    }
+  }
+
   input.addEventListener('change', async (e)=>{
     const file = input.files && input.files[0];
     if (!file) return;
@@ -61,7 +62,7 @@ async function initUID() {
       if (file.size > 1.5 * 1024 * 1024) {
         throw new Error('File too large. Please keep under ~1.5 MB.');
       }
-      const dataUrl = await toBase64(file); // "data:image/png;base64,xxxx"
+      const dataUrl = await toBase64(file);
       const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl);
       if (!m) throw new Error('Unsupported image format.');
       const contentType = m[1];
@@ -74,8 +75,16 @@ async function initUID() {
       });
       const res = await r.json();
       if (!r.ok || !res.ok) throw new Error(res.message || res.error || ('HTTP '+r.status));
+
+      const uploadedPath = res.path || '';
       out.value = res.url || '';
-      out.dataset.path = res.path || '';
+      out.dataset.path = uploadedPath;
+
+      const regionId = out.dataset.regionId;
+      if (regionId && uploadedPath) {
+        await linkImageAfterUpload(regionId, uploadedPath);
+      }
+
     }catch(err){
       console.error(err);
       out.value = 'Upload failed: ' + (err?.message || err);
@@ -89,40 +98,4 @@ async function initUID() {
       try { document.execCommand('copy'); } catch {}
     });
   }
-})();
-// Après l'UPLOAD OK
-// Supposons que tu as:
-const regionId = out.regionId;                 // récupéré après /finalize
-const repoPath = `assets/images/${regionId}/${filename}`; // ou ce que ton upload a produit
-// OU si tu as déjà l’URL: const imageUrl = "https://raw.githubusercontent.com/…"
-
-const linkPayload = {
-  regionId,
-  imageUrl: repoPath   // <- peut être un chemin repo OU une URL http(s)
-};
-
-
-// Capsule async dédiée pour linker l’image uploadée
-  (async function linkImageAfterUpload(regionId, repoPath){
-    const linkPayload = {
-      regionId,
-      imageUrl: repoPath // <- peut être un chemin repo OU une URL http(s)
-    };
-
-    try {
-      const resp = await window.fetchWithJWT('/.netlify/functions/link-image', {
-        method: 'POST',
-        headers: { 'content-type':'application/json' },
-        body: JSON.stringify(linkPayload)
-      });
-      const j = await resp.json();
-      if (!j.ok) {
-        console.warn('link-image failed:', j);
-      } else {
-        console.log('✅ image linked', j.imageUrl);
-        if (typeof refreshStatus === 'function') refreshStatus();
-      }
-    } catch (err) {
-      console.error('Erreur link-image:', err);
-    }
 })();
