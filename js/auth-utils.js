@@ -1,43 +1,53 @@
+// Utilitaires d'auth (compatible navigateur + Node/Netlify Functions)
+// Ne doit pas utiliser `window` au top-level pour éviter "window is not defined".
+'use strict';
 
-// auth-utils.js — Utilitaires JWT sans import/export (utilisation via <script>)
-// Déclare les fonctions globales : window.fetchWithJWT et window.authUtils.getUIDFromToken
-
-(function(){
-  const jwtKey = 'jwtToken';
-
-  // Fonction pour envoyer un fetch avec le JWT stocké
-  async function fetchWithJWT(url, options = {}) {
-    const token = localStorage.getItem(jwtKey);
-    const headers = options.headers || {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+function getTokenFromReq(req) {
+  // 1) Priorité : token dans les headers (Authorization: Bearer ...)
+  if (req && req.headers) {
+    const auth = req.headers.authorization || req.headers.Authorization;
+    if (auth && typeof auth === 'string') {
+      const m = auth.match(/^Bearer\s+(.+)$/i);
+      if (m) return m[1];
+      return auth; // si pas de "Bearer", renvoyer la valeur brute
     }
-    return fetch(url, { ...options, headers });
-  }
-
-  // Fonction pour décoder le payload du JWT sans vérifier la signature (client-side only)
-  function decodeJWT(token) {
-    try {
-      const payload = token.split('.')[1];
-      const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-      return JSON.parse(json);
-    } catch (e) {
-      console.warn('[auth-utils] Impossible de décoder le JWT');
-      return null;
+    // 2) Cookie (ex: cookie "jwt" ou "token")
+    const cookie = req.headers.cookie || req.headers.Cookie;
+    if (cookie && typeof cookie === 'string') {
+      const m = cookie.match(/(?:^|;\s*)(?:jwt|token)=([^;]+)/);
+      if (m) return m[1];
     }
   }
 
-  // Fonction pour récupérer le UID du token JWT (si disponible)
-  function getUIDFromToken() {
-    const token = localStorage.getItem(jwtKey);
-    if (!token) return null;
-    const decoded = decodeJWT(token);
-    return decoded?.uid || null;
+  // 3) Si on est en navigateur (window existe), essayer localStorage
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage.getItem('jwt') || window.localStorage.getItem('token') || null;
   }
 
-  // Initialisation globale
-  window.fetchWithJWT = fetchWithJWT;
-  window.authUtils = {
-    getUIDFromToken
-  };
-})();
+  return null;
+}
+
+async function fetchWithJWT(input, init = {}, req = undefined) {
+  // Récupère le token à partir de req (si fourni) ou de l'environnement client
+  const token = getTokenFromReq(req) || (init.headers && (init.headers.Authorization || init.headers.authorization));
+  const headers = Object.assign({}, init.headers || {});
+
+  if (token) {
+    // Normaliser header Authorization
+    if (!headers.Authorization && !headers.authorization) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  const fetchFn = (typeof fetch !== 'undefined') ? fetch : (typeof globalThis !== 'undefined' ? globalThis.fetch : undefined);
+  if (!fetchFn) throw new Error('fetch not available in this runtime');
+
+  const realInit = Object.assign({}, init, { headers });
+  return fetchFn(input, realInit);
+}
+
+// Pour compatibilité CommonJS
+module.exports = {
+  getTokenFromReq,
+  fetchWithJWT
+};
