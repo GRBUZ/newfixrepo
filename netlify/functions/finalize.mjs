@@ -1,12 +1,12 @@
-import jwt from 'jsonwebtoken';
-
-// netlify/functions/finalize.mjs — regions-aware finalize
+// netlify/functions/finalize.mjs — regions-aware finalize + JWT
 // Env required:
 //   GH_REPO   = "OWNER/REPO"
 //   GH_TOKEN  = "<fine-grained PAT>"
 //   GH_BRANCH = "main"
 // Optional:
 //   STATE_PATH = "data/state.json"
+
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
 
 const STATE_PATH = process.env.STATE_PATH || "data/state.json";
 const GH_REPO = process.env.GH_REPO;
@@ -66,49 +66,6 @@ async function ghPutJson(path, jsonData, sha){
   return r.json();
 }
 
-
-export default async (req) => {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.split(' ')[1];
-  let decoded;
-
-  try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (err) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ ok: false, error: 'Invalid or missing token' }),
-    };
-  }
-
-  // Le uid est maintenant disponible via decoded.uid
-  const uid = decoded.uid;
-  try {
-    if (req.method !== "POST") return bad(405, "METHOD_NOT_ALLOWED");
-    if (!GH_REPO || !GH_TOKEN) return bad(500, "GITHUB_CONFIG_MISSING");
-
-    const payload = await req.json().catch(()=>null);
-    if (!payload) return bad(400, "BAD_JSON");
-
-    const name = String(payload.name || "").trim().slice(0, 40);
-    const blocks = Array.isArray(payload.blocks) ? payload.blocks.map(n => Number(n)) : [];
-
-    // remplace ces lignes :
-// const linkUrl = String(payload.linkUrl || "").trim();
-// if (!name || !linkUrl || !blocks.length) return bad(400, "MISSING_FIELDS");
-// if (!/^https?:\/\//i.test(linkUrl)) return bad(400, "INVALID_URL");
-
-// par :
-const rawUrl = String(payload.linkUrl || "").trim();
-if (!name || !rawUrl || !blocks.length) return bad(400, "MISSING_FIELDS");
-
-let linkUrl;
-try {
-  linkUrl = normalizeUrl(rawUrl);
-} catch (e) {
-  return bad(400, "INVALID_URL");
-}
-
 function normalizeUrl(raw) {
   let s = (raw || "").trim();
   if (!s) throw new Error("EMPTY");
@@ -121,10 +78,39 @@ function normalizeUrl(raw) {
   if (u.protocol !== "http:" && u.protocol !== "https:") {
     throw new Error("INVALID_URL_SCHEME");
   }
-  u.hash = "";            // on enlève l’ancre (#...)
+  u.hash = "";            // on enlève l'ancre (#...)
   return u.toString();    // URL normalisée
 }
 
+export default async (req) => {
+  try {
+    // Vérification de l'authentification JWT
+    const authCheck = requireAuth(req);
+    if (!authCheck.success) {
+      return bad(401, 'UNAUTHORIZED', { message: authCheck.message });
+    }
+
+    if (req.method !== "POST") return bad(405, "METHOD_NOT_ALLOWED");
+    if (!GH_REPO || !GH_TOKEN) return bad(500, "GITHUB_CONFIG_MISSING");
+
+    const payload = await req.json().catch(()=>null);
+    if (!payload) return bad(400, "BAD_JSON");
+
+    // Récupération de l'UID depuis le JWT au lieu du payload
+    const uid = getAuthenticatedUID(req);
+    
+    const name = String(payload.name || "").trim().slice(0, 40);
+    const blocks = Array.isArray(payload.blocks) ? payload.blocks.map(n => Number(n)) : [];
+
+    const rawUrl = String(payload.linkUrl || "").trim();
+    if (!name || !rawUrl || !blocks.length) return bad(400, "MISSING_FIELDS");
+
+    let linkUrl;
+    try {
+      linkUrl = normalizeUrl(rawUrl);
+    } catch (e) {
+      return bad(400, "INVALID_URL");
+    }
 
     // Load state.json
     const { json: state0, sha } = await ghGetJson(STATE_PATH);
@@ -134,7 +120,8 @@ function normalizeUrl(raw) {
     for (const idx of blocks) {
       if (state.sold[idx]) return bad(409, "ALREADY_SOLD", { idx });
       const lk = state.locks[idx];
-      if (lk && lk.uid && lk.uid !== payload.uid) return bad(409, "LOCKED_BY_OTHER", { idx });
+      // Utilisation de l'UID JWT pour vérifier les locks
+      if (lk && lk.uid && lk.uid !== uid) return bad(409, "LOCKED_BY_OTHER", { idx });
     }
 
     // Crée une région unique pour cette sélection
@@ -143,15 +130,21 @@ function normalizeUrl(raw) {
     if (!state.regions) state.regions = {};
     state.regions[regionId] = { imageUrl: "", rect };
 
-    // Ecrit les blocs vendus avec regionId
+    // Ecrit les blocs vendus avec regionId et uid pour traçabilité
     const ts = Date.now();
     for (const idx of blocks) {
-      state.sold[idx] = { name, linkUrl, ts, regionId };
+      state.sold[idx] = { name, linkUrl, ts, regionId, uid };
       if (state.locks) delete state.locks[idx];
     }
 
     await ghPutJson(STATE_PATH, state, sha);
-    return new Response(JSON.stringify({ ok:true, regionId, rect, soldCount: blocks.length }), {
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      regionId, 
+      rect, 
+      soldCount: blocks.length,
+      uid // ajout pour traçabilité
+    }), {
       headers: { "content-type":"application/json", "cache-control":"no-store" }
     });
   } catch (e) {

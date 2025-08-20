@@ -1,5 +1,4 @@
-
-import jwt from 'jsonwebtoken';
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
 
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
@@ -58,6 +57,7 @@ function parseState(raw) {
   if (!raw) return { sold:{}, locks:{} };
   try {
     const obj = JSON.parse(raw);
+    // Back-compat: if previous format was {artCells:{...}}
     if (obj.artCells && !obj.sold) {
       const sold = {};
       for (const [k,v] of Object.entries(obj.artCells)) {
@@ -82,53 +82,75 @@ function pruneLocks(locks) {
   return out;
 }
 
+const TTL_MS = 3 * 60 * 1000;
+
 export default async (req) => {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.split(' ')[1];
-  let decoded;
-
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: 'Invalid or missing token' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' }
-    });
-  }
+    // Vérification de l'authentification JWT
+    const authCheck = requireAuth(req);
+    if (!authCheck.success) {
+      return jres(401, { ok: false, error: 'UNAUTHORIZED', message: authCheck.message });
+    }
 
-  const uid = decoded.uid;
-
-  try {
     if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
+    
     const body = await req.json();
+    
+    // Récupération de l'UID depuis le JWT au lieu du body
+    const uid = getAuthenticatedUID(req);
     const blocks = Array.isArray(body.blocks) ? body.blocks.map(n=>parseInt(n,10)).filter(n=>Number.isInteger(n)&&n>=0&&n<10000) : [];
-    const ttl = Math.max(60000, Math.min(300000, parseInt(body.ttl, 10) || 180000));
+    
     if (!uid || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
 
+    // Read current state
     let got = await ghGetFile(PATH_JSON);
     let sha = got.sha;
     let st = parseState(got.content);
     st.locks = pruneLocks(st.locks);
 
+    // Build lock set
     const now = Date.now();
+    const until = now + TTL_MS;
+    const locked = [];
+    const conflicts = [];
+
     for (const b of blocks) {
       const key = String(b);
-      st.locks[key] = { uid, until: now + ttl };
+      if (st.sold[key]) { conflicts.push(b); continue; }
+      const l = st.locks[key];
+      if (l && l.until > now && l.uid !== uid) { conflicts.push(b); continue; }
+      st.locks[key] = { uid, until };
+      locked.push(b);
     }
 
+    // Commit only if something changed
     const newContent = JSON.stringify(st, null, 2);
+    let newSha;
     try {
-      const newSha = await ghPutFile(PATH_JSON, newContent, sha, `reserve ${blocks.length} by ${uid}`);
-      return jres(200, { ok:true, locks: st.locks });
+      newSha = await ghPutFile(PATH_JSON, newContent, sha, `reserve ${locked.length} blocks by ${uid}`);
     } catch (e) {
+      // Retry once on conflict (sha changed)
       if (String(e).includes('GITHUB_PUT_FAILED 409')) {
         got = await ghGetFile(PATH_JSON);
-        const st2 = parseState(got.content);
-        st2.locks = pruneLocks(st2.locks);
-        return jres(200, { ok:true, locks: st2.locks });
+        sha = got.sha; st = parseState(got.content); st.locks = pruneLocks(st.locks);
+        // recompute with fresh state (single pass)
+        const locked2 = [];
+        const now2 = Date.now(); const until2 = now2 + TTL_MS;
+        for (const b of blocks) {
+          const key = String(b);
+          if (st.sold[key]) continue;
+          const l = st.locks[key];
+          if (l && l.until > now2 && l.uid !== uid) continue;
+          st.locks[key] = { uid, until: until2 };
+          locked2.push(b);
+        }
+        const content2 = JSON.stringify(st, null, 2);
+        newSha = await ghPutFile(PATH_JSON, content2, got.sha, `reserve(retry) ${locked2.length} by ${uid}`);
+        return jres(200, { ok:true, locked: locked2, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
       }
       throw e;
     }
+    return jres(200, { ok:true, locked, conflicts, locks: st.locks, ttlSeconds: Math.round(TTL_MS/1000) });
   } catch (e) {
     return jres(500, { ok:false, error:'RESERVE_FAILED', message: String(e) });
   }

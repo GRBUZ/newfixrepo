@@ -1,4 +1,3 @@
-import jwt from 'jsonwebtoken';
 
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
@@ -30,10 +29,34 @@ async function ghGetFile(path) {
   return { sha: data.sha, content: buf.toString('utf8'), status: 200 };
 }
 
+async function ghPutFile(path, content, sha, message) {
+  const url = `${API_BASE}/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`;
+  const body = {
+    message,
+    content: Buffer.from(content, 'utf8').toString('base64'),
+    branch: GH_BRANCH
+  };
+  if (sha) body.sha = sha;
+  const r = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `token ${GH_TOKEN}`,
+      'User-Agent': 'netlify-fn',
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`GITHUB_PUT_FAILED ${r.status}`);
+  const data = await r.json();
+  return data.content.sha;
+}
+
 function parseState(raw) {
   if (!raw) return { sold:{}, locks:{} };
   try {
     const obj = JSON.parse(raw);
+    // Back-compat: if previous format was {artCells:{...}}
     if (obj.artCells && !obj.sold) {
       const sold = {};
       for (const [k,v] of Object.entries(obj.artCells)) {
@@ -58,20 +81,7 @@ function pruneLocks(locks) {
   return out;
 }
 
-export default async (req) => {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.split(' ')[1];
-  let decoded;
-
-  try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (err) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ ok: false, error: 'Invalid or missing token' }),
-    };
-  }
-
+export default async () => {
   try {
     if (!GH_REPO || !GH_TOKEN) {
       return jres(500, { ok:false, error:'MISSING_ENV', need: ['GH_REPO','GH_TOKEN'], have: { GH_REPO: !!GH_REPO, GH_TOKEN: !!GH_TOKEN } });

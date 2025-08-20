@@ -1,8 +1,8 @@
-import jwt from 'jsonwebtoken';
-
-// netlify/functions/link-image.mjs
+// netlify/functions/link-image.mjs + JWT
 // POST JSON: { regionId, imageUrl }  // imageUrl peut être absolu (https://...)
 //                                        ou un chemin repo ("assets/images/...")
+
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
 
 const STATE_PATH = process.env.STATE_PATH || "data/state.json";
 const GH_REPO    = process.env.GH_REPO;
@@ -28,7 +28,7 @@ async function ghGetJson(path){
   return { json: JSON.parse(content || "{}"), sha: data.sha };
 }
 
-  async function ghPutJson(path, jsonData, sha, msg){
+async function ghPutJson(path, jsonData, sha, msg){
   const pretty = JSON.stringify(jsonData, null, 2) + "\n";
   const body = {
     message: msg || "chore: set regions[regionId].imageUrl",
@@ -45,58 +45,29 @@ async function ghGetJson(path){
   return r.json();
 }
 
-
-  //const pretty = JSON.stringify(jsonData, null, 2) + "\n";            // lisible
-  //const body = {
-    //message: msg || "chore: set regions[regionId].imageUrl",
-    //content: Buffer.from(pretty, "utf-8").toString("base64"),
-    //branch: GH_BRANCH,
-    //sha
-  //};
-  //const r = await fetch(
-    //`https://api.github.com/repos/${GH_REPO}/contents/${encodeURIComponent(path)}`,
-    //{
-      //method: "PUT",
-      //headers: {
-        //"Authorization": `Bearer ${GH_TOKEN}`,
-        //"Accept": "application/vnd.github+json",
-        //"Content-Type": "application/json"
-      //},
-      //body: JSON.stringify(body)
-    //}
-  //);
-  //if (!r.ok) throw new Error(`GH_PUT_FAILED:${r.status}`);
-  //return r.json();
-
 function toAbsoluteUrl(imageUrl){
-  // Si on reçoit "assets/images/…", on fabrique l’URL RAW GitHub
+  // Si on reçoit "assets/images/…", on fabrique l'URL RAW GitHub
   if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
   const p = String(imageUrl).replace(/^\/+/, ""); // enlève /
   return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${p}`;
 }
 
 export default async (req) => {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.split(' ')[1];
-  let decoded;
-
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (err) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ ok: false, error: 'Invalid or missing token' }),
-    };
-  }
+    // Vérification de l'authentification JWT
+    const authCheck = requireAuth(req);
+    if (!authCheck.success) {
+      return bad(401, 'UNAUTHORIZED', { message: authCheck.message });
+    }
 
-  // Le uid est maintenant disponible via decoded.uid
-  const uid = decoded.uid;
-  try {
     if (req.method !== "POST") return bad(405, "METHOD_NOT_ALLOWED");
     if (!GH_REPO || !GH_TOKEN) return bad(500, "GITHUB_CONFIG_MISSING");
 
     const body = await req.json().catch(()=>null);
     if (!body || !body.regionId || !body.imageUrl) return bad(400, "MISSING_FIELDS");
+
+    // Récupération de l'UID pour traçabilité
+    const uid = getAuthenticatedUID(req);
 
     const regionId = String(body.regionId).trim();
     const url = toAbsoluteUrl(String(body.imageUrl).trim());
@@ -108,8 +79,13 @@ export default async (req) => {
 
     state.regions[regionId].imageUrl = url;
 
-    await ghPutJson(STATE_PATH, state, sha, `chore: link imageUrl for ${regionId}`);
-    return new Response(JSON.stringify({ ok:true, regionId, imageUrl: url }), {
+    await ghPutJson(STATE_PATH, state, sha, `chore: link imageUrl for ${regionId} by ${uid}`);
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      regionId, 
+      imageUrl: url,
+      uid // ajout pour traçabilité
+    }), {
       headers: { "content-type":"application/json", "cache-control":"no-store" }
     });
   } catch (e) {

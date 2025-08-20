@@ -1,5 +1,4 @@
-import jwt from 'jsonwebtoken';
-
+const { requireAuth, getAuthenticatedUID } = require('./jwt-middleware.js');
 
 const GH_REPO   = process.env.GH_REPO;
 const GH_TOKEN  = process.env.GH_TOKEN;
@@ -84,31 +83,22 @@ function pruneLocks(locks) {
 }
 
 export default async (req) => {
-  const authHeader = req.headers.authorization || '';
-const token = authHeader.split(' ')[1];
-let decoded;
+  try {
+    // Vérification de l'authentification JWT
+    const authCheck = requireAuth(req);
+    if (!authCheck.success) {
+      return jres(401, { ok: false, error: 'UNAUTHORIZED', message: authCheck.message });
+    }
 
-try {
-  decoded = jwt.verify(token, process.env.JWT_SECRET);
-} catch (err) {
-  return {
-    statusCode: 401,
-    body: JSON.stringify({ ok: false, error: 'Invalid or missing token' }),
-  };
-}
-
-const uid = decoded.uid;
-
-try {
-  if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
-
-  const body = await req.json();
-  const blocks = Array.isArray(body.blocks)
-    ? body.blocks.map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n >= 0 && n < 10000)
-    : [];
-
-  if (blocks.length === 0) return jres(400, { ok: false, error: 'MISSING_FIELDS' });
-
+    if (req.method !== 'POST') return jres(405, { ok:false, error:'METHOD_NOT_ALLOWED' });
+    
+    const body = await req.json();
+    
+    // Récupération de l'UID depuis le JWT au lieu du body
+    const uid = getAuthenticatedUID(req);
+    const blocks = Array.isArray(body.blocks) ? body.blocks.map(n=>parseInt(n,10)).filter(n=>Number.isInteger(n)&&n>=0&&n<10000) : [];
+    
+    if (!uid || blocks.length===0) return jres(400, { ok:false, error:'MISSING_FIELDS' });
 
     let got = await ghGetFile(PATH_JSON);
     let sha = got.sha;
