@@ -155,3 +155,21 @@ export default async (req) => {
     return jres(500, { ok:false, error:'RESERVE_FAILED', message: String(e) });
   }
 };
+
+exports.handler = async (event) => {
+  console.log("🔹 [reserve] Incoming request:", event);
+
+  try {
+    // logic here
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ ok: true })
+    };
+  } catch (e) {
+    console.error("❌ [reserve] Error:", e);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ ok: false, error: "SERVER_ERROR" })
+    };
+  }
+};
